@@ -76,6 +76,10 @@ class RealACPAdapter(ACPAdapter):
                     break
                 elif msg.get("method") == "session/update":
                     update = msg.get("params", {}).get("update", {})
+                    update_type = update.get("type", "")
+                    # 跳过思考/推理内容，只记录实际消息和结果
+                    if update_type in ("thinking", "reasoning"):
+                        continue
                     yield update
             except asyncio.TimeoutError:
                 yield {"type": "error", "content": "读取超时"}

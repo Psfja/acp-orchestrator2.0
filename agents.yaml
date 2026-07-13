@@ -6,8 +6,8 @@ settings:
 agents:
   orchestrator:
     name: "编排Agent"
-    command: "claude-agent-acp"
-    adapter: "claude_code"
+    command: "direct-llm"
+    adapter: "direct_llm"
     role: "orchestrator"
     system_prompt: |
       你是项目编排专家。你只做以下事情，除此之外一律不能做：

@@ -11,6 +11,7 @@ from src.logger.logger import Logger
 from src.cli.display import Display
 
 from src.agents.adapters.mock import MockAdapter
+from src.agents.adapters.direct_llm import DirectLLMAdapter
 from src.agents.adapters.claude_code import ClaudeCodeAdapter
 from src.agents.adapters.codex import CodexAdapter
 from src.agents.adapters.opencode import OpenCodeAdapter
@@ -40,6 +41,7 @@ class OrchestratorREPL:
             "echo": MockAdapter,
             "claude_code": ClaudeCodeAdapter,
             "codex": CodexAdapter,
+            "direct_llm": DirectLLMAdapter,
             "opencode": OpenCodeAdapter,
             "reasonix": ReasonixAdapter,
             "pi": PiAdapter,

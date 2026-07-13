@@ -8,6 +8,7 @@ from src.agents.manager import AgentManager
 from src.logger.logger import Logger
 
 from src.agents.adapters.mock import MockAdapter
+from src.agents.adapters.direct_llm import DirectLLMAdapter
 
 # 已安装的 ACP Agent 使用真实适配器
 from src.agents.adapters.claude_code import ClaudeCodeAdapter
@@ -32,6 +33,8 @@ async def main_async(requirement: str, config_path: str) -> int:
 
     manager = AgentManager(logger=logger)
 
+    # DirectLLM 用于编排（快速 JSON，无 Agent 开销）
+    manager.register_adapter("direct_llm", DirectLLMAdapter)
     # 已安装的 Agent → 真实适配器；未安装的 → MockAdapter 兜底
     manager.register_adapter("mock", MockAdapter)
     manager.register_adapter("echo", MockAdapter)
