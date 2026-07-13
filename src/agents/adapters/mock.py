@@ -9,9 +9,9 @@ ORCHESTRATOR_RESPONSE = """好的，我分析后将需求拆分为以下任务:
 
 ```json
 [
-    {"id": "task_1", "description": "设计数据库schema：用户表、账单表、分类表", "assigned_agent": "backend-dev"},
-    {"id": "task_2", "description": "编写后端API：CRUD账单、统计接口", "assigned_agent": "backend-dev"},
-    {"id": "task_3", "description": "编写前端页面：记账入口、账单列表、统计图表", "assigned_agent": "frontend-dev"}
+    {"id": "task_1", "description": "设计数据库schema：用户表、账单表、分类表", "assigned_agent": "backend-dev", "forbidden": ["不要写前端代码", "不要处理UI"]},
+    {"id": "task_2", "description": "编写后端API：CRUD账单、统计接口", "assigned_agent": "backend-dev", "forbidden": ["不要写前端代码", "不要修改数据库schema"]},
+    {"id": "task_3", "description": "编写前端页面：记账入口、账单列表、统计图表", "assigned_agent": "frontend-dev", "forbidden": ["不要写后端API", "不要操作数据库"]}
 ]
 ```
 """

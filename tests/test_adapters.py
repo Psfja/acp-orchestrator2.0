@@ -20,7 +20,7 @@ from src.agents.adapters.openhands import OpenHandsAdapter
 
 
 @pytest.mark.parametrize("adapter_cls, expected_cmd", [
-    (ClaudeCodeAdapter, ["claude-code-acp"]),
+    (ClaudeCodeAdapter, ["claude-agent-acp"]),
     (CodexAdapter, ["npx", "@zed-industries/codex-acp"]),
     (GeminiAdapter, ["gemini", "--acp"]),
     (CopilotAdapter, ["copilot", "--acp"]),
@@ -35,7 +35,7 @@ from src.agents.adapters.openhands import OpenHandsAdapter
     (QoderAdapter, ["npx", "@qoder-ai/qodercli", "--acp"]),
     (HermesAdapter, ["hermes", "acp"]),
     (PiAdapter, ["pi-acp"]),
-    (ReasonixAdapter, ["npx", "reasonix", "--acp"]),
+    (ReasonixAdapter, ["reasonix", "--acp"]),
     (OpenHandsAdapter, ["openhands", "acp"]),
 ])
 def test_adapter_launch_command(adapter_cls, expected_cmd):

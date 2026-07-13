@@ -11,6 +11,11 @@ from src.logger.logger import Logger
 from src.cli.display import Display
 
 from src.agents.adapters.mock import MockAdapter
+from src.agents.adapters.claude_code import ClaudeCodeAdapter
+from src.agents.adapters.codex import CodexAdapter
+from src.agents.adapters.opencode import OpenCodeAdapter
+from src.agents.adapters.reasonix import ReasonixAdapter
+from src.agents.adapters.pi import PiAdapter
 
 
 class OrchestratorREPL:
@@ -29,26 +34,27 @@ class OrchestratorREPL:
         self._setup_adapters()
 
     def _setup_adapters(self):
-        # 默认 MockAdapter，安装真实 Agent 后替换
+        # 已安装的 Agent → 真实适配器；未安装的 → MockAdapter 兜底
         self._adapter_registry = {
             "mock": MockAdapter,
             "echo": MockAdapter,
-            "claude_code": MockAdapter,
-            "codex": MockAdapter,
+            "claude_code": ClaudeCodeAdapter,
+            "codex": CodexAdapter,
+            "opencode": OpenCodeAdapter,
+            "reasonix": ReasonixAdapter,
+            "pi": PiAdapter,
+            # 未安装的 Agent 使用 MockAdapter
             "gemini": MockAdapter,
             "copilot": MockAdapter,
             "goose": MockAdapter,
             "cline": MockAdapter,
             "auggie": MockAdapter,
             "kiro": MockAdapter,
-            "opencode": MockAdapter,
             "qwen_code": MockAdapter,
             "vibe": MockAdapter,
             "droid": MockAdapter,
             "qoder": MockAdapter,
             "hermes": MockAdapter,
-            "pi": MockAdapter,
-            "reasonix": MockAdapter,
             "openhands": MockAdapter,
         }
 

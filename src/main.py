@@ -9,6 +9,13 @@ from src.logger.logger import Logger
 
 from src.agents.adapters.mock import MockAdapter
 
+# 已安装的 ACP Agent 使用真实适配器
+from src.agents.adapters.claude_code import ClaudeCodeAdapter
+from src.agents.adapters.codex import CodexAdapter
+from src.agents.adapters.opencode import OpenCodeAdapter
+from src.agents.adapters.reasonix import ReasonixAdapter
+from src.agents.adapters.pi import PiAdapter
+
 
 def get_default_config_path() -> str:
     return os.path.join(os.path.dirname(__file__), "..", "agents.yaml")
@@ -25,26 +32,26 @@ async def main_async(requirement: str, config_path: str) -> int:
 
     manager = AgentManager(logger=logger)
 
-    # 默认使用 MockAdapter（无需安装真实 Agent 即可运行）
-    # 如果你安装了对应的 ACP Agent，切换为真实适配器即可
+    # 已安装的 Agent → 真实适配器；未安装的 → MockAdapter 兜底
     manager.register_adapter("mock", MockAdapter)
     manager.register_adapter("echo", MockAdapter)
-    manager.register_adapter("claude_code", MockAdapter)
-    manager.register_adapter("codex", MockAdapter)
+    manager.register_adapter("claude_code", ClaudeCodeAdapter)
+    manager.register_adapter("codex", CodexAdapter)
+    manager.register_adapter("opencode", OpenCodeAdapter)
+    manager.register_adapter("reasonix", ReasonixAdapter)
+    manager.register_adapter("pi", PiAdapter)
+    # 未安装的 Agent 使用 MockAdapter
     manager.register_adapter("gemini", MockAdapter)
     manager.register_adapter("copilot", MockAdapter)
     manager.register_adapter("goose", MockAdapter)
     manager.register_adapter("cline", MockAdapter)
     manager.register_adapter("auggie", MockAdapter)
     manager.register_adapter("kiro", MockAdapter)
-    manager.register_adapter("opencode", MockAdapter)
     manager.register_adapter("qwen_code", MockAdapter)
     manager.register_adapter("vibe", MockAdapter)
     manager.register_adapter("droid", MockAdapter)
     manager.register_adapter("qoder", MockAdapter)
     manager.register_adapter("hermes", MockAdapter)
-    manager.register_adapter("pi", MockAdapter)
-    manager.register_adapter("reasonix", MockAdapter)
     manager.register_adapter("openhands", MockAdapter)
 
     fsm = OrchestrationFSM(config=config, manager=manager, logger=logger)

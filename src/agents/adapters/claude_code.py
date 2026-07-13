@@ -3,4 +3,4 @@
 
 class ClaudeCodeAdapter(RealACPAdapter):
     def get_launch_command(self) -> list[str]:
-        return ["claude-code-acp"]
+        return ["claude-agent-acp"]

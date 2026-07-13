@@ -3,4 +3,4 @@
 
 class ReasonixAdapter(RealACPAdapter):
     def get_launch_command(self) -> list[str]:
-        return ["npx", "reasonix", "--acp"]
+        return ["reasonix", "--acp"]
