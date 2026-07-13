@@ -19,7 +19,14 @@
       "Bash(gh auth *)",
       "Bash(git reset *)",
       "Bash(git checkout *)",
-      "PowerShell(acp *)"
+      "PowerShell(acp *)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_integration.py tests/test_repl.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_repl.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_integration.py -v)",
+      "PowerShell(cd \"D:\\\\acp agent\"; python -m py_compile src/fsm/engine.py 2>&1; Write-Output \"Exit: $LASTEXITCODE\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_simple_integration.py -v)",
+      "Bash(rtk wc *)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v)"
     ]
   }
 }

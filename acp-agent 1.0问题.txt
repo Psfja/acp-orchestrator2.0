@@ -1,0 +1,70 @@
+---
+
+## ACP Orchestrator 插件——问题总结
+
+### 一、ACP 协议兼容性问题（已修复）
+
+| 问题 | 原因 | 修复 |
+|------|------|------|
+| `protocolVersion` 类型错误 | 代码发字符串 `"0.11.0"`，ACP v1 SDK 要求整数 `1` | ✅ 改为 `protocolVersion: 1` |
+| `session/new` 缺少 `mcpServers` | ACP v1 新增必填字段 | ✅ 添加 `mcpServers: []` |
+| `cwd` 必须是绝对路径 | ACP v1 不接受相对路径 `"."` | ✅ 改为 `os.path.abspath()` |
+| 超大消息超出 `readline` 限制 | `available_commands_update` 超 64KB | ✅ 实现分块读取 `_read_line` |
+| 结构化 content block 无法解析 | ACP v1 返回嵌套 dict，非纯文本 | ✅ 实现 `_extract_text` 多层提取 |
+| Windows `.cmd` 文件 subprocess 失败 | `asyncio.create_subprocess_exec` 无法执行 `.cmd` | ✅ 用 `create_subprocess_shell` |
+
+### 二、架构设计的核心问题（未解决）
+
+**根本矛盾：交互式编程 Agent ≠ 被动任务编排器**
+
+```
+期望行为: 编排Agent收到需求 → 立即输出JSON任务列表
+实际行为: 编排Agent收到需求 → 探索项目 → 进入计划模式 → 读文件 → 问问题 → 超时
+```
+
+所有主流 ACP Agent（Claude Code、Codex、Gemini、Reasonix、OpenCode、Pi）的设计目标都是**交互式编程助手**，它们内置了不可覆盖的行为链：
+- 先理解上下文（explore workspace）
+- 再制定计划（plan mode / brainstorming）
+- 然后执行（implement）
+
+即使用最强硬的 system prompt（"禁止使用工具、禁止探索、直接输出 JSON"），Agent 的自身训练/规则也会覆盖这些指令。**`systemPrompt` 是追加而非替换**，Agent 默认行为权重更高。
+
+### 三、5 次试跑的结果
+
+| 编排 Agent | 结果 | 原因 |
+|------------|------|------|
+| claude_code (Claude Code) | 超时 | 进入 plan mode → spawn 子 agent 探索项目 → 300s 不够 |
+| claude_code (强化 prompt) | 超时 | 仍然探索项目 + superpowers skill 触发 |
+| codex (Codex) | 超时 7min | 无输出，静默等待 |
+| codex (yolo + 强化 prompt) | 运行中但行为不变 | 执行 `Get-ChildItem`、读 `pyproject.toml`，完全无视"禁止探索"指令 |
+
+### 四、总结
+
+**这个架构设计存在根本性缺陷：让交互式 Agent 做非交互的编排工作。** 编排角色需要的是一个简单的 LLM 调用——给 prompt，收 JSON，不需要工具、不需要探索、不需要计划模式。但现有 17 个适配器全都是包装完整交互式 Agent，无法真正约束其行为。
+
+**三个可行方向：**
+1. **DirectLLMAdapter**——不经过 ACP Agent，直接调用 LLM API（用户有 `$OPENAI_API_KEY`），完全控制 behavior
+2. **硬化 MockAdapter**——内置预设的任务拆分逻辑，绕过 Agent
+3. **隔离工作目录**——给 orchestrator 一个空目录做 cwd，减少探索内容（我刚改了一半）需要我走哪个方向？## ACP Orchestrator 的问题
+
+### 已修复的技术问题（6 项）
+
+ACP 协议版本、参数格式、超大消息、内容提取、Windows subprocess 兼容——都已修好，测试全过。
+
+### 未解决的核心问题（1 个）
+
+**交互式编程 Agent 不适合做非交互编排。** 
+
+编排器需要的是：接收需求 → 直接输出 JSON。但所有 ACP Agent（Claude Code、Codex、Reasonix 等）的设计是：**先探索、再计划、再执行**。这个行为链是 Agent 自身的默认规则，`systemPrompt` 只是建议，无法覆盖。
+
+> 试了 Claude Code（进入 plan mode 超时）、Codex（无视"禁止探索"指令，照样 `Get-ChildItem`），5 次全都失败。
+
+### 根源
+
+ACP 协议定义了通信管道，但没定义 Agent 的**服从度**。Agent 收到 prompt 后怎么做，完全由它自己的 training 决定。而我们需要的编排角色恰好要求 Agent 放下所有工具、计划、探索——恰好和它被训练的方向相反。
+
+### 可行修复方向
+
+1. **DirectLLMAdapter** — 绕过 Agent，直接调 LLM API（用户有 key），完全控制行为
+2. **硬化 MockAdapter** — 内置任务拆分逻辑，不依赖 Agent
+3. **隔离 cwd** — 给 orchestrator 空目录，减少它"探索"的冲动（权宜之计）

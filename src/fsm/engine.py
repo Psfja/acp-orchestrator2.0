@@ -196,9 +196,8 @@ class OrchestrationFSM:
 
     async def run(self, requirement: str) -> dict:
         start_time = time.time()
-        global_timeout = self.config.settings.global_timeout_seconds
 
-        async def _run_inner():
+        try:
             self._transition(OrchestrationState.ORCHESTRATING)
             self.iteration += 1
 
@@ -264,12 +263,6 @@ class OrchestrationFSM:
             self._transition(OrchestrationState.FAILED)
             return {"status": "failed", "reason": f"超过最大迭代次数({self.config.settings.max_iterations})"}
 
-        try:
-            return await asyncio.wait_for(_run_inner(), timeout=global_timeout)
-        except asyncio.TimeoutError:
-            self._transition(OrchestrationState.FAILED)
-            self.logger.log_failed(f"全局超时({global_timeout}秒)")
-            return {"status": "failed", "reason": f"全局超时({global_timeout}秒)"}
         except Exception as e:
             self._transition(OrchestrationState.FAILED)
             self.logger.log_failed(str(e))
