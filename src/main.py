@@ -7,25 +7,6 @@ from src.fsm.engine import OrchestrationFSM
 from src.agents.manager import AgentManager
 from src.logger.logger import Logger
 
-# 真实 ACP 适配器
-from src.agents.adapters.real import RealACPAdapter
-from src.agents.adapters.claude_code import ClaudeCodeAdapter
-from src.agents.adapters.codex import CodexAdapter
-from src.agents.adapters.gemini import GeminiAdapter
-from src.agents.adapters.copilot import CopilotAdapter
-from src.agents.adapters.goose import GooseAdapter
-from src.agents.adapters.cline import ClineAdapter
-from src.agents.adapters.auggie import AuggieAdapter
-from src.agents.adapters.kiro import KiroAdapter
-from src.agents.adapters.opencode import OpenCodeAdapter
-from src.agents.adapters.qwen_code import QwenCodeAdapter
-from src.agents.adapters.vibe import VibeAdapter
-from src.agents.adapters.droid import DroidAdapter
-from src.agents.adapters.qoder import QoderAdapter
-from src.agents.adapters.hermes import HermesAdapter
-from src.agents.adapters.pi import PiAdapter
-from src.agents.adapters.reasonix import ReasonixAdapter
-from src.agents.adapters.openhands import OpenHandsAdapter
 from src.agents.adapters.mock import MockAdapter
 
 
@@ -44,26 +25,27 @@ async def main_async(requirement: str, config_path: str) -> int:
 
     manager = AgentManager(logger=logger)
 
-    # 注册所有适配器
+    # 默认使用 MockAdapter（无需安装真实 Agent 即可运行）
+    # 如果你安装了对应的 ACP Agent，切换为真实适配器即可
     manager.register_adapter("mock", MockAdapter)
     manager.register_adapter("echo", MockAdapter)
-    manager.register_adapter("claude_code", ClaudeCodeAdapter)
-    manager.register_adapter("codex", CodexAdapter)
-    manager.register_adapter("gemini", GeminiAdapter)
-    manager.register_adapter("copilot", CopilotAdapter)
-    manager.register_adapter("goose", GooseAdapter)
-    manager.register_adapter("cline", ClineAdapter)
-    manager.register_adapter("auggie", AuggieAdapter)
-    manager.register_adapter("kiro", KiroAdapter)
-    manager.register_adapter("opencode", OpenCodeAdapter)
-    manager.register_adapter("qwen_code", QwenCodeAdapter)
-    manager.register_adapter("vibe", VibeAdapter)
-    manager.register_adapter("droid", DroidAdapter)
-    manager.register_adapter("qoder", QoderAdapter)
-    manager.register_adapter("hermes", HermesAdapter)
-    manager.register_adapter("pi", PiAdapter)
-    manager.register_adapter("reasonix", ReasonixAdapter)
-    manager.register_adapter("openhands", OpenHandsAdapter)
+    manager.register_adapter("claude_code", MockAdapter)
+    manager.register_adapter("codex", MockAdapter)
+    manager.register_adapter("gemini", MockAdapter)
+    manager.register_adapter("copilot", MockAdapter)
+    manager.register_adapter("goose", MockAdapter)
+    manager.register_adapter("cline", MockAdapter)
+    manager.register_adapter("auggie", MockAdapter)
+    manager.register_adapter("kiro", MockAdapter)
+    manager.register_adapter("opencode", MockAdapter)
+    manager.register_adapter("qwen_code", MockAdapter)
+    manager.register_adapter("vibe", MockAdapter)
+    manager.register_adapter("droid", MockAdapter)
+    manager.register_adapter("qoder", MockAdapter)
+    manager.register_adapter("hermes", MockAdapter)
+    manager.register_adapter("pi", MockAdapter)
+    manager.register_adapter("reasonix", MockAdapter)
+    manager.register_adapter("openhands", MockAdapter)
 
     fsm = OrchestrationFSM(config=config, manager=manager, logger=logger)
     result = await fsm.run(requirement)

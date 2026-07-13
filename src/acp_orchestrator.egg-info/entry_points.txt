@@ -1,2 +1,3 @@
 [console_scripts]
+acp = cli.repl:main
 acp-orch = src.main:main

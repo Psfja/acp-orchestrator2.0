@@ -10,24 +10,6 @@ from src.agents.manager import AgentManager
 from src.logger.logger import Logger
 from src.cli.display import Display
 
-# 导入所有适配器
-from src.agents.adapters.claude_code import ClaudeCodeAdapter
-from src.agents.adapters.codex import CodexAdapter
-from src.agents.adapters.gemini import GeminiAdapter
-from src.agents.adapters.copilot import CopilotAdapter
-from src.agents.adapters.goose import GooseAdapter
-from src.agents.adapters.cline import ClineAdapter
-from src.agents.adapters.auggie import AuggieAdapter
-from src.agents.adapters.kiro import KiroAdapter
-from src.agents.adapters.opencode import OpenCodeAdapter
-from src.agents.adapters.qwen_code import QwenCodeAdapter
-from src.agents.adapters.vibe import VibeAdapter
-from src.agents.adapters.droid import DroidAdapter
-from src.agents.adapters.qoder import QoderAdapter
-from src.agents.adapters.hermes import HermesAdapter
-from src.agents.adapters.pi import PiAdapter
-from src.agents.adapters.reasonix import ReasonixAdapter
-from src.agents.adapters.openhands import OpenHandsAdapter
 from src.agents.adapters.mock import MockAdapter
 
 
@@ -47,26 +29,27 @@ class OrchestratorREPL:
         self._setup_adapters()
 
     def _setup_adapters(self):
+        # 默认 MockAdapter，安装真实 Agent 后替换
         self._adapter_registry = {
             "mock": MockAdapter,
             "echo": MockAdapter,
-            "claude_code": ClaudeCodeAdapter,
-            "codex": CodexAdapter,
-            "gemini": GeminiAdapter,
-            "copilot": CopilotAdapter,
-            "goose": GooseAdapter,
-            "cline": ClineAdapter,
-            "auggie": AuggieAdapter,
-            "kiro": KiroAdapter,
-            "opencode": OpenCodeAdapter,
-            "qwen_code": QwenCodeAdapter,
-            "vibe": VibeAdapter,
-            "droid": DroidAdapter,
-            "qoder": QoderAdapter,
-            "hermes": HermesAdapter,
-            "pi": PiAdapter,
-            "reasonix": ReasonixAdapter,
-            "openhands": OpenHandsAdapter,
+            "claude_code": MockAdapter,
+            "codex": MockAdapter,
+            "gemini": MockAdapter,
+            "copilot": MockAdapter,
+            "goose": MockAdapter,
+            "cline": MockAdapter,
+            "auggie": MockAdapter,
+            "kiro": MockAdapter,
+            "opencode": MockAdapter,
+            "qwen_code": MockAdapter,
+            "vibe": MockAdapter,
+            "droid": MockAdapter,
+            "qoder": MockAdapter,
+            "hermes": MockAdapter,
+            "pi": MockAdapter,
+            "reasonix": MockAdapter,
+            "openhands": MockAdapter,
         }
 
     def _make_manager(self) -> AgentManager:
