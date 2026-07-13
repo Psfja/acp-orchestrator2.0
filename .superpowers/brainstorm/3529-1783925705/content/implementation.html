@@ -1,0 +1,258 @@
+<h2>Section 4/4 — 项目结构 & 技术选型 & 实现路线</h2>
+<p class="subtitle">最后一部分：代码怎么组织、用什么技术、按什么顺序开发</p>
+
+<h3>技术选型</h3>
+
+<div class="options">
+  <div class="option" data-choice="python">
+    <div class="content">
+      <h3>Python 3.11+ (推荐)</h3>
+      <p>asyncio 原生支持子进程管理 · ACP Python SDK (agent-client-protocol) · OpenHands 本身是 Python 项目，插件兼容性最好</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>核心依赖</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <tr style="background:#2a2a3e;">
+      <th style="padding:8px;text-align:left;border-bottom:1px solid #444;">依赖</th>
+      <th style="padding:8px;text-align:left;border-bottom:1px solid #444;">用途</th>
+    </tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #333;"><code>agent-client-protocol</code></td><td style="padding:8px;border-bottom:1px solid #333;">ACP Python SDK (Pydantic 模型 + asyncio)</td></tr>
+    <tr style="background:#1e1e32;"><td style="padding:8px;border-bottom:1px solid #333;"><code>pyyaml</code></td><td style="padding:8px;border-bottom:1px solid #333;">解析 agents.yaml 配置文件</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #333;"><code>asyncio</code> (标准库)</td><td style="padding:8px;border-bottom:1px solid #333;">异步子进程管理 + 并行任务执行</td></tr>
+    <tr style="background:#1e1e32;"><td style="padding:8px;border-bottom:1px solid #333;"><code>json</code> (标准库)</td><td style="padding:8px;border-bottom:1px solid #333;">JSON-RPC 2.0 消息编解码</td></tr>
+  </table>
+</div>
+
+<h3>项目目录结构</h3>
+
+<div class="mockup">
+  <div class="mockup-header">acp-orchestrator/</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+acp-orchestrator/
+├── agents.yaml              # Agent 配置 (名称/命令/专长/提示词)
+├── pyproject.toml           # Python 项目配置
+├── README.md
+│
+├── src/
+│   ├── __init__.py
+│   ├── main.py              # 入口: 解析参数、启动FSM主循环
+│   │
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── loader.py        # 加载 agents.yaml，返回 AgentConfig 列表
+│   │
+│   ├── fsm/
+│   │   ├── __init__.py
+│   │   ├── engine.py        # OrchestrationFSM — 状态机核心
+│   │   ├── states.py        # 状态枚举 + 状态转换表
+│   │   └── context.py       # rebuild_context() — 返工上下文组装
+│   │
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── manager.py       # AgentManager — 生命周期管理
+│   │   ├── adapter.py       # ACPAdapter 抽象基类
+│   │   ├── adapters/
+│   │   │   ├── __init__.py
+│   │   │   ├── claude_code.py   # ClaudeCodeAdapter
+│   │   │   ├── codex.py         # CodexAdapter
+│   │   │   ├── gemini.py        # GeminiAdapter
+│   │   │   ├── copilot.py       # CopilotAdapter
+│   │   │   └── goose.py         # GooseAdapter
+│   │   └── session.py       # AgentSession — 封装单个Agent的stdin/stdout
+│   │
+│   ├── tasks/
+│   │   ├── __init__.py
+│   │   ├── queue.py         # TaskQueue — 任务入队/分发/状态
+│   │   └── models.py        # Task, TaskStatus 数据类
+│   │
+│   ├── logger/
+│   │   ├── __init__.py
+│   │   └── logger.py        # Logger — 格式化+彩色终端输出
+│   │
+│   └── openhands/
+│       ├── __init__.py
+│       └── plugin.py        # OpenHands 插件入口
+│
+└── tests/
+    ├── test_fsm.py
+    ├── test_task_queue.py
+    ├── test_agent_manager.py
+    └── test_adapters.py
+    </pre>
+  </div>
+</div>
+
+<h3>实现路线 (4个阶段)</h3>
+
+<div class="mockup">
+  <div class="mockup-header">分阶段开发计划</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+
+<span style="color:#ffcc00;">Phase 1: 核心骨架 (MVP)</span>
+┌──────────────────────────────────────────────────────┐
+│ 目标: 能跑通最简流程 — 1个编排Agent + 1个执行Agent      │
+│                                                      │
+│ □ config/loader.py — 加载 agents.yaml                 │
+│ □ agents/adapter.py — ACPAdapter 抽象接口              │
+│ □ agents/adapters/claude_code.py — 第一个适配器        │
+│ □ agents/manager.py — spawn/send/read/kill            │
+│ □ agents/session.py — stdin/stdout 封装               │
+│ □ tasks/models.py + queue.py — 基础任务队列            │
+│ □ logger/logger.py — 终端日志                          │
+│ □ fsm/states.py + engine.py — 状态机 (先做线性流程)     │
+│ □ main.py — CLI 入口                                  │
+│                                                      │
+│ 验证: 输入"写一个hello world页面" → 打通全流程           │
+└──────────────────────────────────────────────────────┘
+
+<span style="color:#ffcc00;">Phase 2: 循环迭代 & 多Agent</span>
+┌──────────────────────────────────────────────────────┐
+│ 目标: 支持返工循环 + 多个执行Agent并行                    │
+│                                                      │
+│ □ fsm/context.py — rebuild_context()                 │
+│ □ fsm/engine.py — 加入 REVIEWING→ORCH 返工路径         │
+│ □ fsm/engine.py — 加入 TESTING→ORCH 返工路径           │
+│ □ fsm/engine.py — 迭代计数 + 上限保护                   │
+│ □ agents/manager.py — 并行 spawn 多个Agent             │
+│ □ tasks/queue.py — 任务依赖 + 并行分发                  │
+│ □ 超时处理 + 单个任务失败不影响其他                      │
+│                                                      │
+│ 验证: 返工场景 — 故意让执行Agent产出有bug，验证循环修复    │
+└──────────────────────────────────────────────────────┘
+
+<span style="color:#ffcc00;">Phase 3: 多Agent适配 + 健壮性</span>
+┌──────────────────────────────────────────────────────┐
+│ 目标: 支持主流ACP Agent  + 容错全覆盖                    │
+│                                                      │
+│ □ adapters/codex.py                                  │
+│ □ adapters/gemini.py                                 │
+│ □ adapters/copilot.py                                │
+│ □ adapters/goose.py                                  │
+│ □ Agent 崩溃自动重启 (同类型任务换新session)            │
+│ □ 全局超时 + 优雅降级                                  │
+│ □ FAILED 状态的完整处理                                │
+│                                                      │
+│ 验证: 混合Agent协作 — 前端用Codex, 后端用Claude Code...  │
+└──────────────────────────────────────────────────────┘
+
+<span style="color:#ffcc00;">Phase 4: OpenHands 集成</span>
+┌──────────────────────────────────────────────────────┐
+│ 目标: 作为OpenHands插件运行                            │
+│                                                      │
+│ □ openhands/plugin.py — OpenHands 插件入口            │
+│ □ 适配 OpenHands 的 Agent 管理 API                    │
+│ □ OpenHands UI 中显示编排流程和日志                     │
+│ □ 集成测试 + 文档                                     │
+│                                                      │
+│ 验证: 在 OpenHands 中发起需求 → 看到完整编排流程        │
+└──────────────────────────────────────────────────────┘
+    </pre>
+  </div>
+</div>
+
+<h3>agents.yaml 完整示例</h3>
+
+<div class="mockup">
+  <div class="mockup-header">配置文件结构</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+# agents.yaml — 所有Agent定义
+# 修改此文件即可调整Agent分配，无需改代码
+
+settings:
+  max_iterations: 5
+  task_timeout_seconds: 300
+  global_timeout_seconds: 3600
+
+agents:
+  orchestrator:
+    name: "编排Agent"
+    command: "claude-code-acp"
+    adapter: "claude_code"
+    role: "orchestrator"
+    system_prompt: |
+      你是项目编排专家。你只做一件事：
+      1. 接收用户需求
+      2. 分析需要完成的任务
+      3. 将任务拆分为独立的子任务
+      4. 每个子任务指定由哪个Agent执行
+
+      可用的执行Agent:
+      - frontend-dev: 前端开发 (HTML/CSS/JS/React)
+      - backend-dev: 后端开发 (API/数据库/业务逻辑)
+      - checker: 代码审查
+      - tester: 测试编写和执行
+
+      你的输出必须是严格的JSON数组格式:
+      [
+        {
+          "id": "task_1",
+          "description": "编写登录表单HTML+CSS",
+          "assigned_agent": "frontend-dev"
+        }
+      ]
+
+      不要做任何执行工作，只拆分和指派。
+
+  frontend-dev:
+    name: "前端开发"
+    command: "codex acp"
+    adapter: "codex"
+    role: "executor"
+    system_prompt: |
+      你是前端开发专家。你只负责:
+      - HTML/CSS/JavaScript 代码编写
+      - React/Vue 组件开发
+      - 页面样式和布局
+
+      不要做后端、数据库相关工作。
+      完成任务后说明你创建/修改了哪些文件。
+
+  backend-dev:
+    name: "后端开发"
+    command: "claude-code-acp"
+    adapter: "claude_code"
+    role: "executor"
+    system_prompt: |
+      你是后端开发专家。你只负责:
+      - API 接口开发
+      - 数据库设计和操作
+      - 业务逻辑实现
+
+      不要做前端UI工作。
+      完成任务后说明你创建/修改了哪些文件。
+
+  checker:
+    name: "代码审查"
+    command: "gemini --acp"
+    adapter: "gemini"
+    role: "checker"
+    system_prompt: |
+      你是代码审查专家。你只负责:
+      - 检查代码质量和完整性
+      - 验证代码是否符合需求
+      - 发现潜在问题和bug
+      - 输出: "通过" 或 "不通过: 具体问题描述"
+
+      不要修改代码，只审查。
+
+  tester:
+    name: "测试"
+    command: "codex acp"
+    adapter: "codex"
+    role: "tester"
+    system_prompt: |
+      你是测试专家。你只负责:
+      - 编写测试用例
+      - 运行测试
+      - 报告测试结果 (通过数/失败数/失败详情)
+
+      不要修改业务代码，只编写和运行测试。
+    </pre>
+  </div>
+</div>

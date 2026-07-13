@@ -1,0 +1,224 @@
+<h2>Section 3/4 — FSM 状态机完整流转 & 错误处理</h2>
+<p class="subtitle">每个状态的进入/退出逻辑 + 异常路径 + 终止条件</p>
+
+<h3>状态转换全图</h3>
+
+<div class="mockup">
+  <div class="mockup-header">FSM 完整状态图</div>
+  <div class="mockup-body">
+    <pre style="font-size:11px;line-height:1.6;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+                              ┌──────────┐
+                              │   IDLE   │
+                              └─────┬────┘
+                                    │ 用户输入需求
+                                    ▼
+                          ┌─────────────────┐
+               ┌──────────│  ORCHESTRATING  │◄──────────────────────────┐
+               │          └────────┬────────┘                           │
+               │                   │ 拆分成功                            │
+               │                   ▼                                    │
+               │          ┌─────────────────┐                           │
+               │          │   DISPATCHING   │                           │
+               │          └────────┬────────┘                           │
+               │                   │ 所有任务已分发                       │
+               │                   ▼                                    │
+               │          ┌─────────────────┐                           │
+               │          │    EXECUTING    │──── 超时/崩溃 ──► FAILED  │
+               │          └──┬───────┬──────┘                           │
+               │             │       │ 单个任务失败(可恢复)               │
+               │             │       └──────────┐                       │
+               │             │ 全部完成          │                       │
+               │             ▼                  ▼                       │
+               │          ┌─────────────────────────┐                   │
+               │          │       REVIEWING          │                   │
+               │          └──┬──────────────────┬───┘                   │
+               │             │ 全部通过          │ 不通过                 │
+               │             ▼                  │                       │
+               │          ┌─────────────┐       │                       │
+               │          │   TESTING   │       │                       │
+               │          └──┬──────┬───┘       │                       │
+               │             │      │ 不通过     │                       │
+               │             │      └────────────┤                       │
+               │             │ 通过              │                       │
+               │             ▼                  │                       │
+               │          ┌──────────┐          │                       │
+               │          │COMPLETED │          │                       │
+               │          └──────────┘          │                       │
+               │                                │                       │
+               └────────────────────────────────┘                       │
+                        返工路径: 带失败上下文回到编排阶段                   │
+    </pre>
+  </div>
+</div>
+
+<h3>各状态详解</h3>
+
+<div class="mockup">
+  <div class="mockup-header">状态进入/退出/异常处理</div>
+  <div class="mockup-body">
+    <pre style="font-size:11px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+┌─────────────────────────────────────────────────────────────┐
+│ IDLE                                                        │
+│   enter: 记录启动时间，加载 agents.yaml                        │
+│   触发: 用户输入需求 → transition(ORCHESTRATING)               │
+├─────────────────────────────────────────────────────────────┤
+│ ORCHESTRATING                                               │
+│   enter:                                                    │
+│     - Logger: "[状态] IDLE → ORCHESTRATING (第N轮迭代)"       │
+│     - AgentManager.spawn("orchestrator")                    │
+│     - 组装上下文: 原始需求 + 已有产出 + 失败原因(如有)         │
+│     - AgentManager.send_prompt(session, context)            │
+│   exit (成功):                                              │
+│     - 解析编排Agent输出的JSON任务列表                         │
+│     - 验证: 每个任务有 {id, description, assigned_agent}     │
+│     - Logger: "[编排→脚本] 拆分N个任务: ..."                  │
+│     - transition(DISPATCHING)                               │
+│   exit (解析失败):                                           │
+│     - 重试: 告知编排Agent输出格式错误，要求重新输出             │
+│     - 最多重试3次，仍失败 → transition(FAILED)                │
+├─────────────────────────────────────────────────────────────┤
+│ DISPATCHING                                                 │
+│   enter:                                                    │
+│     - Logger: "[状态] ORCHESTRATING → DISPATCHING"           │
+│     - TaskQueue.enqueue(tasks)                              │
+│     - 遍历 tasks:                                            │
+│         AgentManager.spawn(task.assigned_agent)              │
+│         Logger: "[脚本] 任务X → Agent名"                     │
+│     - transition(EXECUTING)                                 │
+├─────────────────────────────────────────────────────────────┤
+│ EXECUTING                                                   │
+│   enter:                                                    │
+│     - Logger: "[状态] DISPATCHING → EXECUTING"               │
+│     - 并行: 为每个 Task+Agent 创建协程                          │
+│         async def execute_one(task, agent):                  │
+│             await agent.send_prompt(task.description)        │
+│             async for update in agent.read_updates():        │
+│                 Logger.log_exec(agent.name, update)   ← 可见  │
+│             result = await agent.wait_result()               │
+│             TaskQueue.mark_done(task.id, result)             │
+│             Logger: "[Agent→脚本] ✅ 任务完成"                 │
+│     - 进度: TaskQueue.status_summary() 实时更新               │
+│     - 所有任务完成 → transition(REVIEWING)                    │
+│   exit (部分失败):                                           │
+│     - 收集失败任务信息和错误原因                               │
+│     - 反馈给编排Agent → transition(ORCHESTRATING)             │
+│   exit (超时/崩溃):                                          │
+│     - 超时: 单个任务超过时限 → 标记失败，其余继续              │
+│     - 崩溃: 所有Agent无响应 → transition(FAILED)              │
+├─────────────────────────────────────────────────────────────┤
+│ REVIEWING                                                   │
+│   enter:                                                    │
+│     - Logger: "[状态] EXECUTING → REVIEWING"                 │
+│     - AgentManager.spawn("checker")                         │
+│     - 组装: 所有任务的 (description, result) 列表             │
+│     - send_prompt(checker, review_context)                   │
+│   exit (通过):                                               │
+│     - Logger: "[检查Agent→脚本] ✅ 全部审核通过"               │
+│     - transition(TESTING)                                   │
+│   exit (不通过):                                             │
+│     - Logger: "[检查Agent→脚本] ⚠️ 问题: ..."                │
+│     - 收集问题描述 → rebuild_context()                        │
+│     - transition(ORCHESTRATING) ← 带问题上下文返工            │
+├─────────────────────────────────────────────────────────────┤
+│ TESTING                                                     │
+│   enter:                                                    │
+│     - Logger: "[状态] REVIEWING → TESTING"                   │
+│     - AgentManager.spawn("tester")                          │
+│     - send_prompt(tester, "测试所有产出代码...")              │
+│   exit (通过):                                               │
+│     - Logger: "[测试Agent→脚本] ✅ 全部测试通过 (N/N)"        │
+│     - transition(COMPLETED)                                 │
+│   exit (不通过):                                             │
+│     - Logger: "[测试Agent→脚本] ❌ 失败: test_x, test_y"      │
+│     - 收集失败测试详情 → rebuild_context()                     │
+│     - transition(ORCHESTRATING) ← 带失败信息返工              │
+├─────────────────────────────────────────────────────────────┤
+│ COMPLETED                                                   │
+│   enter:                                                    │
+│     - Logger: "[状态] TESTING → COMPLETED"                   │
+│     - 汇总: 总迭代次数、总任务数、总耗时                       │
+│     - Logger: "🎉 项目完成! 共N轮迭代, M个任务"               │
+│     - 输出最终项目文件路径                                    │
+│     - 清理: 关闭所有Agent会话                                 │
+│     - transition(IDLE)                                      │
+├─────────────────────────────────────────────────────────────┤
+│ FAILED                                                      │
+│   enter:                                                    │
+│     - Logger: "[状态] → FAILED (原因: ...)"                  │
+│     - 输出已有产出(不丢失已完成的工作)                         │
+│     - 清理所有Agent会话                                       │
+│     - 返回错误码                                              │
+└─────────────────────────────────────────────────────────────┘
+    </pre>
+  </div>
+</div>
+
+<h3>错误处理策略</h3>
+
+<div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px;">
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>🔄 可恢复错误 → 返工</h4>
+      <p>检查不通过 / 测试不通过 / 单个任务失败</p>
+      <p>→ 带失败上下文回到 ORCHESTRATING</p>
+      <p>编排Agent看到"哪些已完成+哪里失败了"</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>🛑 不可恢复 → FAILED</h4>
+      <p>超过最大迭代次数 / Agent 崩溃 / 编排输出持续无效</p>
+      <p>→ 过渡到 FAILED 状态，输出已有成果</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>⏱️ 超时保护</h4>
+      <p>每个 Agent 任务可配置超时时间</p>
+      <p>超时 → 标记失败 → 其他任务继续</p>
+      <p>全局超时: 整个流程最大执行时间</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>📊 迭代上限</h4>
+      <p>max_iterations = 5 (可配置)</p>
+      <p>第5轮仍不通过 → FAILED</p>
+      <p>防止无限循环消耗资源</p>
+    </div>
+  </div>
+</div>
+
+<h3>rebuild_context() — 返工时的上下文组装</h3>
+
+<div class="mockup">
+  <div class="mockup-header">重新编排时的上下文结构</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+def rebuild_context(original_requirement, completed_tasks, failed_info):
+    """组装返工时的完整上下文，让编排Agent知道全局状态"""
+    return f"""
+## 原始需求
+{original_requirement}
+
+## 当前迭代: 第{iteration}轮
+
+## 已完成的任务 (不要重新分配)
+{format_completed_tasks(completed_tasks)}
+# 例如:
+# ✅ 任务1 [前端UI]: login.html + style.css (Codex完成)
+# ✅ 任务3 [数据库]: schema.sql (Gemini完成)
+
+## 失败/问题 (需要重新处理)
+{failed_info}
+# 例如:
+# ❌ 检查不通过: 任务2的auth.py缺少输入验证和错误处理
+# ❌ 测试失败: test_login_invalid 返回500而非401
+
+## 请分析问题，重新拆分为修复任务
+## 只拆分需要修复的部分，已完成的任务不要重新分配
+## 输出格式: [{"id":"task_N","description":"...","assigned_agent":"..."}]
+"""
+    </pre>
+  </div>
+</div>

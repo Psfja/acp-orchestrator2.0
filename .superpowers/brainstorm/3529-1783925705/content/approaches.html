@@ -1,0 +1,239 @@
+<h2>三种架构方案对比</h2>
+<p class="subtitle">都基于 ACP stdin/stdout 子进程模式，差异在于状态管理、生命周期和容错策略</p>
+
+<div class="section">
+  <h3>方案概览</h3>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>同步流水线模式 (Synchronous Pipeline)</h3>
+      <p>最简实现 · 线性执行 · 内存状态</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>事件驱动 + 任务队列模式 (Event-Driven Task Queue)</h3>
+      <p>高并发 · 异步解耦 · 文件持久化</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>有限状态机模式 (State Machine)</h3>
+      <p>严谨流转 · 可恢复 · 结构化状态存储</p>
+    </div>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border);">
+
+<!-- ===== 方案 A 详情 ===== -->
+<h3>方案 A — 同步流水线模式</h3>
+<p class="subtitle">最简单直接的实现，所有步骤串行执行</p>
+
+<div class="mockup">
+  <div class="mockup-header">方案 A 流程图</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.6;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+用户输入
+  │
+  ▼
+┌──────────────────────────────────────┐
+│  Phase 1: 编排                        │
+│  Script → Orchestrator Agent          │
+│  "拆分这个需求为子任务"                 │
+│  ← 返回: [任务A→Agent1, 任务B→Agent2]  │
+├──────────────────────────────────────┤
+│  Phase 2: 执行 (顺序/并行)             │
+│  for each 任务:                        │
+│    Script → Execution Agent           │
+│    ← 返回: 完成结果                    │
+├──────────────────────────────────────┤
+│  Phase 3: 检查                        │
+│  Script → Check Agent                 │
+│  "检查所有完成结果"                     │
+│  ← 返回: 通过/不通过                   │
+├──────────────────────────────────────┤
+│  Phase 4: 测试                        │
+│  Script → Test Agent                  │
+│  "运行测试"                            │
+│  ← 返回: 测试结果                      │
+├──────────────────────────────────────┤
+│  Phase 5: 最终确认                     │
+│  Script → Orchestrator Agent          │
+│  "所有任务已完成，以下是结果汇总"        │
+│  ← 返回: 最终确认 / 需要返工            │
+└──────────────────────────────────────┘
+  │
+  ▼
+输出结果给用户
+    </pre>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros"><h4>优点</h4>
+    <ul>
+      <li>实现简单，逻辑清晰，容易理解和维护</li>
+      <li>终端日志天然有序，每一步清晰可见</li>
+      <li>调试容易 — 出问题直接定位到哪个 Phase</li>
+      <li>适合大多数中小规模任务</li>
+    </ul>
+  </div>
+  <div class="cons"><h4>缺点</h4>
+    <ul>
+      <li>执行 Agent 必须等编排完全结束才开始 — 串行瓶颈</li>
+      <li>全部在内存中 — 脚本崩溃所有状态丢失</li>
+      <li>不支持任务间的依赖关系（B 需要 A 的输出）</li>
+      <li>并行执行需要额外处理结果收集</li>
+    </ul>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border);">
+
+<!-- ===== 方案 B 详情 ===== -->
+<h3>方案 B — 事件驱动 + 任务队列模式</h3>
+<p class="subtitle">异步解耦，更灵活也更复杂</p>
+
+<div class="mockup">
+  <div class="mockup-header">方案 B 架构图</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.6;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+                    ┌──────────────┐
+                    │  任务队列      │
+                    │  (JSON 文件)   │
+                    │  pending/     │
+                    │  running/done │
+                    └──┬───┬───┬──┘
+                       │   │   │
+          ┌────────────┼───┼───┼────────────┐
+          │     🔀 Event Bus (中间脚本)       │
+          │                                  │
+          │  ┌──────────────────────────┐   │
+          │  │ on_new_task(task):       │   │
+          │  │   路由到对应 Agent        │   │
+          │  │                          │   │
+          │  │ on_task_done(result):    │   │
+          │  │   通知 Orchestrator      │   │
+          │  │                          │   │
+          │  │ on_all_done():           │   │
+          │  │   触发 Check → Test      │   │
+          │  └──────────────────────────┘   │
+          └─────────────────────────────────┘
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+     ┌────┴────┐ ┌────┴────┐ ┌────┴────┐
+     │ Agent A │ │ Agent B │ │ Agent C │
+     │ (ACP)   │ │ (ACP)   │ │ (ACP)   │
+     └─────────┘ └─────────┘ └─────────┘
+    </pre>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros"><h4>优点</h4>
+    <ul>
+      <li>执行 Agent 可真正并行工作，独立的 Agent 间互不等待</li>
+      <li>任务队列持久化到文件，脚本崩溃可恢复</li>
+      <li>支持任务依赖 — B 可等待 A 完成再开始</li>
+      <li>扩展性好 — 加新 Agent 类型只需要改配置</li>
+    </ul>
+  </div>
+  <div class="cons"><h4>缺点</h4>
+    <ul>
+      <li>实现复杂度显著增加 — 事件循环、状态管理、并发控制</li>
+      <li>终端日志可能交错输出，可读性下降</li>
+      <li>需要考虑竞态条件和超时处理</li>
+      <li>调试比同步模式困难</li>
+    </ul>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border);">
+
+<!-- ===== 方案 C 详情 ===== -->
+<h3>方案 C — 有限状态机模式 (State Machine)</h3>
+<p class="subtitle">严格的状态流转，每一步都有明确的状态标记</p>
+
+<div class="mockup">
+  <div class="mockup-header">方案 C 状态流转图</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.6;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+              ┌─────────┐
+              │  IDLE   │
+              └────┬────┘
+                   │ 用户输入需求
+                   ▼
+         ┌─────────────────┐
+         │  ORCHESTRATING  │──→ FAILED
+         └────────┬────────┘
+                  │ 任务拆分完成
+                  ▼
+         ┌─────────────────┐
+         │   DISPATCHING   │──→ FAILED
+         └────────┬────────┘
+                  │ 任务已分发至各 Agent
+                  ▼
+    ┌───────────────────────────┐
+    │      EXECUTING            │
+    │  ┌──────┐ ┌──────┐ ┌───┐ │
+    │  │Task A│ │Task B│ │...│ │──→ FAILED (部分)
+    │  │ done │ │running│   │ │
+    │  └──────┘ └──────┘ └───┘ │
+    └────────────┬──────────────┘
+                 │ 全部任务完成
+                 ▼
+         ┌─────────────────┐
+         │   REVIEWING     │──→ REWORK (返回 EXECUTING)
+         └────────┬────────┘
+                  │ 检查通过
+                  ▼
+         ┌─────────────────┐
+         │    TESTING      │──→ REWORK (返回 EXECUTING)
+         └────────┬────────┘
+                  │ 测试通过
+                  ▼
+         ┌─────────────────┐
+         │   COMPLETED     │
+         └─────────────────┘
+    </pre>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros"><h4>优点</h4>
+    <ul>
+      <li>状态明确，每个时刻系统处于什么阶段一目了然</li>
+      <li>支持 REWORK 回退 — 检查/测试不通过可回到执行阶段</li>
+      <li>状态可持久化，脚本重启后可以从上次状态继续</li>
+      <li>终端日志天然带状态标签，可读性好</li>
+    </ul>
+  </div>
+  <div class="cons"><h4>缺点</h4>
+    <ul>
+      <li>状态机本身有一定复杂度</li>
+      <li>状态转换的边界条件需要仔细设计</li>
+      <li>并行任务 + 部分回退的组合逻辑较复杂</li>
+    </ul>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border);">
+
+<div class="section">
+  <h3>我的推荐：C（状态机）+ B（任务队列）的融合方案</h3>
+  <p>以状态机作为核心框架（控制整体流程和可恢复性），内部执行阶段采用事件驱动任务队列（支持并行和依赖）。</p>
+  <p>理由：</p>
+  <ul>
+    <li><strong>状态机</strong>解决"流程可见性"和"崩溃恢复"——你明确要求通信可见，状态机天然适合</li>
+    <li><strong>任务队列</strong>解决"并行执行"——多个 Agent 同时工作时互不阻塞</li>
+    <li>两者的组合避免了各自的短板：状态机处理串行不够灵活，任务队列处理全局流程不够清晰</li>
+    <li>实现复杂度适中——先做核心状态机 + 简单顺序执行，再升级到并行任务队列</li>
+  </ul>
+</div>

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk ls *)",
+      "WebSearch",
+      "Bash(bash *)",
+      "Bash(Start-Sleep -Seconds 2)",
+      "Bash(Get-ChildItem \"D:\\\\acp agent\\\\.superpowers\\\\brainstorm\" -Recurse -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Bash(rtk read *)",
+      "Bash(git init *)",
+      "Bash(rtk pip *)",
+      "Bash(python *)",
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(rtk git *)"
+    ]
+  }
+}

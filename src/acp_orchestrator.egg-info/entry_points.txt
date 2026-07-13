@@ -1,0 +1,2 @@
+[console_scripts]
+acp-orch = src.main:main

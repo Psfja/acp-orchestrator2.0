@@ -1,0 +1,87 @@
+<h2>你的框架构想 — 整体架构预览</h2>
+<p class="subtitle">基于 ACP 协议的多 Agent 编排框架 · 概念图</p>
+
+<div class="section">
+  <h3>核心理念</h3>
+  <p>编排 Agent 只负责拆任务、指派任务、确认结果。执行 Agent 彼此隔离，只做好自己那部分。中间脚本充当 ACP 通信中枢。</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">架构概念图 (ASCII)</div>
+  <div class="mockup-body">
+    <pre style="font-size: 13px; line-height: 1.5; margin: 0; white-space: pre; font-family: 'Courier New', monospace;">
+┌─────────────────────────────────────────────────┐
+│               👤 用户输入需求                      │
+└─────────────────┬───────────────────────────────┘
+                  ▼
+┌─────────────────────────────────────────────────┐
+│         🧠 编排 Agent (Orchestrator)              │
+│   "只拆分任务 + 指派 + 确认结果"                    │
+│   ┌─────────────────────────────────────────┐   │
+│   │ 任务A → Agent-A   任务B → Agent-B        │   │
+│   │ 任务C → Agent-C   最终确认 → Check Agent  │   │
+│   └─────────────────────────────────────────┘   │
+└─────────────────────┬───┬───┬───────────────────┘
+                      │   │   │
+           ┌──────────┼───┼───┼──────────┐
+           │     🔀 中间脚本 (Router)       │
+           │   ACP 协议通信中枢             │
+           │   记录所有消息 (可见性)         │
+           │   ┌──────┐ ┌──────┐ ┌──────┐ │
+           │   │Claude│ │Codex │ │Gemini│ │
+           │   │ Code │ │  CLI │ │  CLI │ │
+           │   └──┬───┘ └──┬───┘ └──┬───┘ │
+           └──────┼────────┼────────┼──────┘
+                  │        │        │
+      ┌───────────┼────────┼────────┼───────────┐
+      │     🎯 执行层 Agent (互相隔离)             │
+      │                                           │
+      │  ┌─────────┐ ┌─────────┐ ┌─────────┐     │
+      │  │Agent A  │ │Agent B  │ │Agent C  │     │
+      │  │前端开发  │ │后端开发  │ │数据库    │     │
+      │  └────┬────┘ └────┬────┘ └────┬────┘     │
+      │       └───────────┼───────────┘          │
+      │                   ▼                      │
+      │         ┌─────────────────┐              │
+      │         │  ✅ Check Agent  │              │
+      │         │  检查已完成任务   │              │
+      │         └────────┬────────┘              │
+      │                  ▼                       │
+      │         ┌─────────────────┐              │
+      │         │  🧪 Test Agent  │              │
+      │         │  测试通过即完成   │              │
+      │         └─────────────────┘              │
+      └───────────────────────────────────────────┘
+    </pre>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键约束</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>🔇 Agent 互不通信</h4>
+        <p>执行 Agent 之间完全隔离，只能通过中间脚本中转</p>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>📡 纯 ACP 协议</h4>
+        <p>不通过注册配置，直接用 ACP 调用已安装的 Agent</p>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>👁️ 全链路可见</h4>
+        <p>所有编排→执行→检查→测试的消息都可查看</p>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>📝 脚本定义专长</h4>
+        <p>在脚本中为每个 Agent 写提示词规范，不做全局注册</p>
+      </div>
+    </div>
+  </div>
+</div>

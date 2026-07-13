@@ -1,0 +1,208 @@
+<h2>Section 2/4 — ACP 通信适配层</h2>
+<p class="subtitle">核心挑战：不同 Agent 的 ACP 启动方式不同，需要统一适配</p>
+
+<div class="section">
+  <h3>为什么需要适配层</h3>
+  <p>虽然都实现了 ACP 协议，但每个 Agent 的启动命令、参数格式、实现细节略有差异：</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">各 Agent 的 ACP 启动方式</div>
+  <div class="mockup-body">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <tr style="background:#2a2a3e;">
+        <th style="padding:8px;text-align:left;border-bottom:1px solid #444;">Agent</th>
+        <th style="padding:8px;text-align:left;border-bottom:1px solid #444;">启动命令</th>
+        <th style="padding:8px;text-align:left;border-bottom:1px solid #444;">类型</th>
+        <th style="padding:8px;text-align:left;border-bottom:1px solid #444;">备注</th>
+      </tr>
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #333;">Claude Code</td>
+        <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">claude-code-acp</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">专用适配器</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">独立二进制，社区维护</td>
+      </tr>
+      <tr style="background:#1e1e32;">
+        <td style="padding:8px;border-bottom:1px solid #333;">Codex CLI</td>
+        <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">npx @zed-industries/codex-acp</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">NPX 适配器</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">官方维护</td>
+      </tr>
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #333;">Gemini CLI</td>
+        <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">gemini --acp</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">原生支持</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">Google 官方</td>
+      </tr>
+      <tr style="background:#1e1e32;">
+        <td style="padding:8px;border-bottom:1px solid #333;">GitHub Copilot</td>
+        <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">copilot --acp</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">原生支持</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">公开预览</td>
+      </tr>
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #333;">Goose</td>
+        <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">goose acp</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">子命令</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">Block 开发</td>
+      </tr>
+      <tr style="background:#1e1e32;">
+        <td style="padding:8px;border-bottom:1px solid #3[object Object]">OpenCode</td>
+        <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">opencode acp</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">子命令</td>
+        <td style="padding:8px;border-bottom:1px solid #333;">开源</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<h3>适配层设计 — Adapter Pattern</h3>
+
+<div class="mockup">
+  <div class="mockup-header">ACPAdapter 接口 + 具体实现</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+# ─── 抽象接口 ───
+
+class ACPAdapter(ABC):
+    """所有 ACP Agent 的统一适配接口"""
+
+    @abstractmethod
+    def get_launch_command(self) -> list[str]:
+        """返回启动命令，如 ['claude-code-acp']"""
+        pass
+
+    @abstractmethod
+    async def spawn(self) -> tuple[asyncio.StreamWriter, asyncio.StreamReader]:
+        """启动子进程，返回 stdin/stdout 管道"""
+        pass
+
+    @abstractmethod
+    async def initialize(self, writer, reader, session_config: dict) -> str:
+        """
+        ACP 握手:
+        1. 发送 initialize request (协议版本协商)
+        2. 发送 session/new (注入 CWD + system_prompt)
+        3. 返回 session_id
+        """
+        pass
+
+    @abstractmethod
+    async def send_prompt(self, writer, session_id, prompt: str) -> None:
+        """发送 session/prompt — 把任务交给 Agent"""
+        pass
+
+    @abstractmethod
+    async def read_updates(self, reader) -> AsyncIterator[dict]:
+        """流式读取 session/update 通知"""
+        pass
+
+    @abstractmethod
+    async def close_session(self, writer, session_id) -> None:
+        """关闭会话"""
+        pass
+
+
+# ─── 具体实现示例 ───
+
+class ClaudeCodeAdapter(ACPAdapter):
+    def get_launch_command(self):
+        return ["claude-code-acp"]
+
+class CodexAdapter(ACPAdapter):
+    def get_launch_command(self):
+        return ["npx", "@zed-industries/codex-acp"]
+
+class GeminiAdapter(ACPAdapter):
+    def get_launch_command(self):
+        return ["gemini", "--acp"]
+    </pre>
+  </div>
+</div>
+
+<div class="section">
+  <h3>ACP 通信流程 (标准 JSON-RPC 2.0)</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">一次完整的 ACP 会话</div>
+  <div class="mockup-body">
+    <pre style="font-size:11px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;background:#1a1a2e;color:#e0e0e0;padding:12px;border-radius:4px;">
+<span style="color:#888;"># Step 1: 启动子进程</span>
+$ claude-code-acp
+<span style="color:#888;"># 子进程启动，等待 stdin 输入 JSON-RPC 消息...</span>
+
+<span style="color:#888;"># Step 2: initialize (协议握手)</span>
+<span style="color:#00ccff;">→</span> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+      "protocolVersion":"0.11.0",
+      "clientInfo":{"name":"acp-orchestrator","version":"0.1.0"},
+      "capabilities":{"fs":{},"terminal":{}}
+    }}
+<span style="color:#00ff88;">←</span> {"jsonrpc":"2.0","id":1,"result":{
+      "serverInfo":{"name":"Claude Code","version":"..."},
+      "capabilities":{"fs":{},"terminal":{}}
+    }}
+
+<span style="color:#888;"># Step 3: session/new (创建会话 + 注入系统提示词)</span>
+<span style="color:#00ccff;">→</span> {"jsonrpc":"2.0","id":2,"method":"session/new","params":{
+      "cwd":"/path/to/project",
+      "systemPrompt":"你是后端开发专家。你只负责编写后端API代码..."  <span style="color:#ffcc00;">← 来自agents.yaml</span>
+    }}
+<span style="color:#00ff88;">←</span> {"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess-001"}}
+
+<span style="color:#888;"># Step 4: session/prompt (发送任务)</span>
+<span style="color:#00ccff;">→</span> {"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+      "sessionId":"sess-001",
+      "prompt":[{"type":"text","text":"编写登录验证API，包含输入校验和错误处理"}]
+    }}
+
+<span style="color:#888;"># Step 5: 流式接收 session/update (Agent 工作过程)</span>
+<span style="color:#00ff88;">←</span> {"jsonrpc":"2.0","method":"session/update","params":{
+      "sessionId":"sess-001",
+      "update":{"type":"message","content":"我来编写登录API..."}
+    }}
+<span style="color:#00ff88;">←</span> {"jsonrpc":"2.0","method":"session/update","params":{
+      "sessionId":"sess-001",
+      "update":{"type":"message","content":"已完成，文件: auth.py"}
+    }}
+
+<span style="color:#888;"># Step 6: session/prompt 返回 (任务完成)</span>
+<span style="color:#00ff88;">←</span> {"jsonrpc":"2.0","id":3,"result":{
+      "stopReason":"end_turn",
+      "message":{"type":"text","text":"已完成登录验证API的编写..."}
+    }}
+
+<span style="color:#888;"># Step 7: 关闭会话</span>
+<span style="color:#00ccff;">→</span> {"jsonrpc":"2.0","id":4,"method":"session/close","params":{"sessionId":"sess-001"}}
+    </pre>
+  </div>
+</div>
+
+<h3>关键设计点</h3>
+
+<div style="display: flex; gap: 12px; flex-wrap: wrap;">
+  <div class="card" style="flex: 1; min-width: 220px;">
+    <div class="card-body">
+      <h4>🔌 统一适配接口</h4>
+      <p>每个 Agent 类型一个 Adapter 类</p>
+      <p>新加 Agent 只需实现 ACPAdapter 接口</p>
+      <p>在 agents.yaml 中指定 adapter 类型</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 220px;">
+    <div class="card-body">
+      <h4>💉 系统提示词注入</h4>
+      <p>在 session/new 阶段注入 systemPrompt</p>
+      <p>提示词来自 agents.yaml 配置</p>
+      <p>限制 Agent 只做自己专长的事</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 220px;">
+    <div class="card-body">
+      <h4>🔄 流式输出转发</h4>
+      <p>session/update 的通知实时被 Logger 捕获</p>
+      <p>Agent 的工作过程对用户完全可见</p>
+      <p>不等待完成才输出 — 边做边看</p>
+    </div>
+  </div>
+</div>

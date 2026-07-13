@@ -1,0 +1,259 @@
+<h2>Section 1/4 — 核心组件架构</h2>
+<p class="subtitle">四个核心模块 + 一个配置层，边界清晰、职责单一</p>
+
+<div class="mockup">
+  <div class="mockup-header">组件分层图</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.6;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+┌─────────────────────────────────────────────────────┐
+│                  agents.yaml                         │
+│  定义: Agent名称、启动命令、专长、系统提示词             │
+└───────────────────────┬─────────────────────────────┘
+                        │ 加载配置
+┌───────────────────────┴─────────────────────────────┐
+│              🔀 ACP Router (中间脚本核心)              │
+│                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
+│  │ Agent    │  │ Task     │  │ State Machine     │  │
+│  │ Manager  │  │ Queue    │  │ (FSM Engine)      │  │
+│  │          │  │          │  │                   │  │
+│  │ spawn    │  │ enqueue  │  │ IDLE→ORCH→DISP→   │  │
+│  │ kill     │  │ dequeue  │  │ EXEC→REVIEW→      │  │
+│  │ stdin/   │  │ status   │  │ TEST→COMPLETED    │  │
+│  │ stdout   │  │ deps     │  │                   │  │
+│  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
+│       │             │                │               │
+│  ┌────┴─────────────┴────────────────┴────────────┐  │
+│  │              📋 Logger (日志系统)                │  │
+│  │  [时间] [来源→目标] [状态] 消息内容               │  │
+│  │  实时终端输出 + 可选文件持久化                     │  │
+│  └─────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────┘
+                        │ ACP (stdin/stdout)
+         ┌──────────────┼──────────────┐
+         │              │              │
+    ┌────┴────┐   ┌────┴────┐   ┌────┴────┐
+    │ 编排    │   │ 执行    │   │ 检查/   │
+    │ Agent   │   │ Agents  │   │ 测试    │
+    │ (特殊)  │   │ (多个)  │   │ Agents  │
+    └─────────┘   └─────────┘   └─────────┘
+    </pre>
+  </div>
+</div>
+
+<h3>组件 1: Agent Manager（Agent 生命周期管理）</h3>
+
+<div class="mockup">
+  <div class="mockup-header">Agent Manager 职责</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+class AgentManager:
+    """
+    职责: 管理所有 ACP Agent 子进程的生命周期
+    不关心任务内容, 只负责进程管理
+
+    config 来自 agents.yaml, 例如:
+
+    agents:
+      orchestrator:
+        command: "claude-code-acp"
+        role: orchestrator
+        system_prompt: |
+          你是项目编排专家。你只做一件事:
+          接收用户需求，拆分为子任务，指定每个子任务由哪个Agent执行。
+          输出格式必须是JSON...
+
+      frontend-dev:
+        command: "codex acp"
+        role: executor
+        system_prompt: |
+          你是前端开发专家。你只负责编写HTML/CSS/JS代码。
+          不要做后端、数据库相关工作...
+
+      backend-dev:
+        command: "claude-code-acp"
+        role: executor
+        system_prompt: |
+          你是后端开发专家...
+
+      checker:
+        command: "gemini --acp"
+        role: checker
+        system_prompt: |
+          你是代码审查专家。你只检查代码质量、完整性和正确性...
+
+      tester:
+        command: "codex acp"
+        role: tester
+        system_prompt: |
+          你是测试专家。你编写并运行测试，报告结果...
+    """
+
+    async def spawn(agent_name: str) -> AgentSession
+        # 1. 从配置读取 command 和 system_prompt
+        # 2. 启动子进程: claude-code-acp (或其他)
+        # 3. 发送 ACP initialize → session/new (注入system_prompt)
+        # 4. 返回 AgentSession (stdin writer, stdout reader)
+
+    async def send_task(session, task: Task) -> None
+        # 通过 session/prompt 发送任务描述
+
+    async def read_response(session) -> AsyncIterator[Message]
+        # 流式读取 session/update 通知
+
+    async def kill(agent_name: str) -> None
+        # 关闭 ACP session，终止子进程
+    </pre>
+  </div>
+</div>
+
+<h3>组件 2: Task Queue（任务队列）</h3>
+
+<div class="mockup">
+  <div class="mockup-header">Task Queue 职责</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+class TaskQueue:
+    """
+    职责: 管理任务的入队、分发、状态追踪
+    支持任务依赖和并行执行
+    """
+
+    tasks: dict[str, TaskStatus]
+    # task_id → {status, assigned_agent, result, deps}
+
+    async def enqueue(tasks: list[Task]) -> None
+        # 编排Agent拆分的任务入队
+
+    async def dispatch() -> list[Task]
+        # 返回所有依赖已满足的 pending 任务
+
+    async def mark_done(task_id, result) -> None
+        # 标记任务完成，解除被阻塞的任务
+
+    async def mark_failed(task_id, error) -> None
+        # 标记任务失败
+
+    async def all_done() -> bool
+        # 检查当前批次是否全部完成
+
+    def status_summary() -> str
+        # [████████░░] 3/4 完成 — 用于终端日志
+    </pre>
+  </div>
+</div>
+
+<h3>组件 3: State Machine Engine</h3>
+
+<div class="mockup">
+  <div class="mockup-header">FSM Engine 职责</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+class OrchestrationFSM:
+    """
+    职责: 掌控整个编排流程的状态转换
+    状态 + 转换条件的严格定义
+    """
+
+    states = [IDLE, ORCHESTRATING, DISPATCHING,
+              EXECUTING, REVIEWING, TESTING, COMPLETED, FAILED]
+
+    transitions = {
+        IDLE:           → ORCHESTRATING,    # 用户输入
+        ORCHESTRATING:  → DISPATCHING,      # 拆分完成
+        DISPATCHING:    → EXECUTING,        # 任务已分发
+        EXECUTING:      → REVIEWING,        # 全完成
+                       → FAILED,            # 有任务失败
+        REVIEWING:      → TESTING,          # 检查通过
+                       → ORCHESTRATING,     # 不通过→返工
+        TESTING:        → COMPLETED,        # 测试通过
+                       → ORCHESTRATING,     # 不通过→返工
+    }
+
+    iteration: int = 0          # 当前迭代轮次
+    max_iterations: int = 5     # 最大迭代次数
+
+    async def transition(new_state) -> None
+        # 1. 验证转换合法性
+        # 2. 记录日志: [状态] REVIEWING → TESTING
+        # 3. 执行状态进入回调
+        # 4. 更新当前状态
+
+    def can_transition(new_state) -> bool
+        # 检查是否允许此状态转换
+
+    async def run(requirement: str) -> Result
+        # 主循环
+    </pre>
+  </div>
+</div>
+
+<h3>组件 4: Logger</h3>
+
+<div class="mockup">
+  <div class="mockup-header">Logger 职责</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+class Logger:
+    """
+    职责: 统一日志格式，实时终端输出
+    所有消息经过这里，保证可见性
+    """
+
+    # 日志级别和颜色
+    COLORS = {
+        "state":   "绿色",   # 状态转换
+        "orch":    "黄色",   # 编排Agent消息
+        "router":  "蓝色",   # 脚本自身消息
+        "exec":    "白色",   # 执行Agent消息
+        "check":   "橙色",   # 检查Agent消息
+        "test":    "紫色",   # 测试Agent消息
+        "error":   "红色",   # 错误
+    }
+
+    def log_state(transition: str) → "[状态] IDLE → ORCHESTRATING"
+    def log_orch(msg: str)   → "[编排→脚本] 拆分结果: ..."
+    def log_router(msg: str) → "[脚本] 任务1 → codex"
+    def log_exec(agent: str, msg: str) → "[Codex→脚本] ✅ 任务1 完成"
+    def log_check(msg: str)  → "[检查Agent→脚本] ✅ 审核通过"
+    def log_test(msg: str)   → "[测试Agent→脚本] ❌ 测试失败: ..."
+    def log_error(msg: str)  → "[错误] ..."
+
+    def progress(current, total, iteration) → "轮次2/5 [████░░] 3/4"
+    </pre>
+  </div>
+</div>
+
+<div class="section">
+  <h3>模块边界原则</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>Agent Manager</h4>
+        <p>只管进程。不管"任务是什么"。</p>
+        <p class="label">依赖: agents.yaml</p>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>Task Queue</h4>
+        <p>只管任务状态。不管"谁执行"。</p>
+        <p class="label">依赖: 无</p>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>FSM Engine</h4>
+        <p>只管流程转换。不管是"怎么执行"。</p>
+        <p class="label">依赖: AgentManager, TaskQueue, Logger</p>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 180px;">
+      <div class="card-body">
+        <h4>Logger</h4>
+        <p>只管输出。不参与业务逻辑。</p>
+        <p class="label">依赖: 无</p>
+      </div>
+    </div>
+  </div>
+</div>

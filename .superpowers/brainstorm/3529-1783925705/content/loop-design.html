@@ -1,0 +1,182 @@
+<h2>修订版架构 — 循环协作模式</h2>
+<p class="subtitle">C(状态机) + B(任务队列) 融合 · 闭环迭代直到通过</p>
+
+<div class="section">
+  <h3>核心循环</h3>
+  <p>这不是一次性的流水线，而是<strong>持续循环</strong>——编排→执行→检查→测试，不通过就回到编排重新来，直到项目完全通过。</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">闭环状态机 (主循环)</div>
+  <div class="mockup-body">
+    <pre style="font-size:12px;line-height:1.6;margin:0;white-space:pre;font-family:'Courier New',monospace;">
+                       ┌─────────┐
+                       │  IDLE   │
+                       └────┬────┘
+                            │ 用户输入需求
+                            ▼
+              ┌─────────────────────────┐
+              │   🔄 ORCHESTRATING      │
+              │   编排Agent拆分任务       │
+              │   → 输出: [(task,agent)] │
+              └────────────┬────────────┘
+                           │ 脚本分发任务到队列
+                           ▼
+              ┌─────────────────────────┐
+              │   📤 DISPATCHING        │
+              │   任务进入各Agent队列     │
+              │   ┌─────┐┌─────┐┌─────┐│
+              │   │T1→A1││T2→A2││T3→A3││
+              │   └──┬──┘└──┬──┘└──┬──┘│
+              └──────┼──────┼──────┼───┘
+                     │      │      │
+                     ▼      ▼      ▼
+              ┌─────────────────────────┐
+              │   ⚙️ EXECUTING          │
+              │   Agent并行执行各自任务   │
+              │   完成后通知脚本           │
+              │   [████████░░] 进度可见   │
+              └────────────┬────────────┘
+                           │ 全部完成
+                           ▼
+              ┌─────────────────────────┐
+              │   🔍 REVIEWING          │
+              │   检查Agent审核所有结果    │
+              └────────┬───────┬────────┘
+                       │       │
+                  通过  │       │ 不通过 (有问题)
+                       │       ▼
+                       │  ┌─────────────────────┐
+                       │  │ 问题反馈给编排Agent    │
+                       │  │ "任务X的输出有问题"    │
+                       │  │ → 回到 ORCHESTRATING │
+                       │  └─────────────────────┘
+                       ▼
+              ┌─────────────────────────┐
+              │   🧪 TESTING            │
+              │   测试Agent验证项目       │
+              └────────┬───────┬────────┘
+                       │       │
+                  通过  │       │ 不通过 (测试失败)
+                       │       ▼
+                       │  ┌──────────────────────────────┐
+                       │  │ 测试失败报告 → 编排Agent       │
+                       │  │ "3个测试失败: login, payment"  │
+                       │  │ 编排Agent重新分析→重新拆分任务   │
+                       │  │ → 回到 ORCHESTRATING           │
+                       │  └──────────────────────────────┘
+                       ▼
+              ┌─────────────────────────┐
+              │   ✅ COMPLETED          │
+              │   项目产出+完整日志       │
+              └─────────────────────────┘
+    </pre>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border);">
+
+<h3>消息流转细节</h3>
+<p class="subtitle">以一次"前端页面开发"为例</p>
+
+<div class="mockup">
+  <div class="mockup-header">终端日志模拟 (所有消息可见)</div>
+  <div class="mockup-body">
+    <pre style="font-size:11px;line-height:1.5;margin:0;white-space:pre;font-family:'Courier New',monospace;background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:6px;">
+<span style="color:#888;">[2026-07-13 10:00:01]</span> <span style="color:#00ff88;">[状态]</span> IDLE → ORCHESTRATING
+<span style="color:#888;">[2026-07-13 10:00:01]</span> <span style="color:#ffcc00;">[编排→脚本]</span> 收到需求:"开发一个登录页面"
+<span style="color:#888;">[2026-07-13 10:00:05]</span> <span style="color:#00ff88;">[编排→脚本]</span> 拆分结果:
+  └─ 任务1 [前端UI] → codex       "编写登录表单HTML+CSS"
+  └─ 任务2 [后端API] → claude-code "编写登录验证API"
+  └─ 任务3 [数据库]  → gemini-cli  "创建用户表结构"
+
+<span style="color:#888;">[2026-07-13 10:00:05]</span> <span style="color:#00ff88;">[状态]</span> ORCHESTRATING → DISPATCHING
+<span style="color:#888;">[2026-07-13 10:00:05]</span> <span style="color:#00ccff;">[脚本]</span> 任务1 → codex (ACP session/new)
+<span style="color:#888;">[2026-07-13 10:00:05]</span> <span style="color:#00ccff;">[脚本]</span> 任务2 → claude-code (ACP session/new)
+<span style="color:#888;">[2026-07-13 10:00:05]</span> <span style="color:#00ccff;">[脚本]</span> 任务3 → gemini-cli (ACP session/new)
+
+<span style="color:#888;">[2026-07-13 10:00:05]</span> <span style="color:#00ff88;">[状态]</span> DISPATCHING → EXECUTING
+<span style="color:#888;">[2026-07-13 10:00:30]</span> <span style="color:#00ccff;">[Codex→脚本]</span> 任务1 进行中... (session/update)
+<span style="color:#888;">[2026-07-13 10:01:00]</span> <span style="color:#00ccff;">[claude-code→脚本]</span> 任务2 进行中... (session/update)
+<span style="color:#888;">[2026-07-13 10:01:20]</span> <span style="color:#00ff88;">[Codex→脚本]</span> ✅ 任务1 完成: login.html + style.css
+<span style="color:#888;">[2026-07-13 10:01:45]</span> <span style="color:#00ff88;">[gemini-cli→脚本]</span> ✅ 任务3 完成: schema.sql
+<span style="color:#888;">[2026-07-13 10:02:00]</span> <span style="color:#00ff88;">[claude-code→脚本]</span> ✅ 任务2 完成: auth.py
+
+<span style="color:#888;">[2026-07-13 10:02:00]</span> <span style="color:#00ff88;">[状态]</span> EXECUTING → REVIEWING
+<span style="color:#888;">[2026-07-13 10:02:00]</span> <span style="color:#ff6600;">[脚本→检查Agent]</span> 审核任务1/2/3的产出...
+
+<span style="color:#888;">[2026-07-13 10:02:30]</span> <span style="color:#ff6600;">[检查Agent→脚本]</span> ⚠️ 任务2的API缺少错误处理
+<span style="color:#888;">[2026-07-13 10:02:30]</span> <span style="color:#00ff88;">[状态]</span> REVIEWING → ORCHESTRATING (返工)
+
+<span style="color:#888;">[2026-07-13 10:02:30]</span> <span style="color:#00ff88;">[编排→脚本]</span> 收到检查反馈，重新拆分:
+  └─ 任务4 [修复] → claude-code "给auth.py添加错误处理"
+
+<span style="color:#888;">[2026-07-13 10:02:30]</span> <span style="color:#00ff88;">[状态]</span> ORCHESTRATING → DISPATCHING → EXECUTING
+<span style="color:#888;">[2026-07-13 10:03:00]</span> <span style="color:#00ff88;">[claude-code→脚本]</span> ✅ 任务4 完成: auth.py (已修复)
+
+<span style="color:#888;">[2026-07-13 10:03:00]</span> <span style="color:#00ff88;">[状态]</span> EXECUTING → REVIEWING
+<span style="color:#888;">[2026-07-13 10:03:15]</span> <span style="color:#ff6600;">[检查Agent→脚本]</span> ✅ 审核通过
+
+<span style="color:#888;">[2026-07-13 10:03:15]</span> <span style="color:#00ff88;">[状态]</span> REVIEWING → TESTING
+<span style="color:#888;">[2026-07-13 10:03:15]</span> <span style="color:#cc66ff;">[脚本→测试Agent]</span> 运行测试套件...
+
+<span style="color:#888;">[2026-07-13 10:03:45]</span> <span style="color:#cc66ff;">[测试Agent→脚本]</span> ❌ 测试失败:
+  1) test_login_success: 200 OK ✓
+  2) test_login_invalid: 500 Error ✗
+  3) test_login_empty: 未测试
+
+<span style="color:#888;">[2026-07-13 10:03:45]</span> <span style="color:#00ff88;">[状态]</span> TESTING → ORCHESTRATING (第2轮迭代)
+
+<span style="color:#888;">[2026-07-13 10:03:45]</span> <span style="color:#ffcc00;">[编排→脚本]</span> 分析测试报告: test_login_invalid失败
+  └─ 任务5 [修复] → claude-code "修复输入验证逻辑"
+
+<span style="color:#888;">[2026-07-13 10:03:45]</span> <span style="color:#00ff88;">[状态]</span> ORCHESTRATING → DISPATCHING → EXECUTING
+<span style="color:#888;">[2026-07-13 10:04:30]</span> <span style="color:#00ff88;">[claude-code→脚本]</span> ✅ 任务5 完成
+
+<span style="color:#888;">[2026-07-13 10:04:30]</span> <span style="color:#00ff88;">[状态]</span> EXECUTING → REVIEWING → TESTING
+<span style="color:#888;">[2026-07-13 10:05:00]</span> <span style="color:#cc66ff;">[测试Agent→脚本]</span> ✅ 全部测试通过! (3/3)
+
+<span style="color:#888;">[2026-07-13 10:05:00]</span> <span style="color:#00ff88;">[状态]</span> TESTING → COMPLETED
+<span style="color:#888;">[2026-07-13 10:05:00]</span> <span style="color:#00ff88;">[系统]</span> 🎉 项目完成! 共迭代2轮, 5个任务, 耗时4分59秒
+    </pre>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border);">
+
+<h3>关键设计决策确认</h3>
+
+<div style="display: flex; gap: 12px; flex-wrap: wrap;">
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>🔄 循环迭代</h4>
+      <p>REVIEWING 不通过 → ORCHESTRATING</p>
+      <p>TESTING 不通过 → ORCHESTRATING</p>
+      <p>编排Agent拿到失败原因，重新分析、重新拆分</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>🛑 终止条件</h4>
+      <p>通过条件: 检查通过 + 测试通过</p>
+      <p>兜底: 最大迭代次数(如5轮)，超限则报错退出</p>
+      <p>每轮迭代编号可见</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>📋 增量任务</h4>
+      <p>返工时只分配<strong>需要修复的新任务</strong></p>
+      <p>已完成且通过检查的任务不重复执行</p>
+      <p>编排Agent需要知道"哪些已完成"</p>
+    </div>
+  </div>
+  <div class="card" style="flex: 1; min-width: 200px;">
+    <div class="card-body">
+      <h4>👁️ 全链路可见</h4>
+      <p>每条消息: [时间] [来源→目标] 内容</p>
+      <p>状态转换实时显示</p>
+      <p>迭代轮次和进度清晰可读</p>
+    </div>
+  </div>
+</div>
