@@ -58,9 +58,6 @@ class OrchestrationFSM:
             return []
 
     async def _orchestrate(self, requirement: str, fail_context: str = "") -> list[Task]:
-        self._transition(OrchestrationState.ORCHESTRATING)
-        self.iteration += 1
-
         orch_config = self.config.agents.get("orchestrator")
         if orch_config is None:
             raise ValueError("agents.yaml中缺少orchestrator配置")
