@@ -1,0 +1,55 @@
+settings:
+  max_iterations: 5
+  task_timeout_seconds: 300
+  global_timeout_seconds: 3600
+
+agents:
+  orchestrator:
+    name: "编排Agent"
+    command: "claude-code-acp"
+    adapter: "claude_code"
+    role: "orchestrator"
+    system_prompt: |
+      你是项目编排专家。你只做一件事：
+      1. 接收用户需求
+      2. 分析需要完成的任务
+      3. 将任务拆分为独立的子任务
+      4. 每个子任务指定由哪个Agent执行
+      输出必须是严格的JSON数组格式: [{"id":"task_1","description":"...","assigned_agent":"..."}]
+      不要做任何执行工作，只拆分和指派。
+
+  frontend-dev:
+    name: "前端开发"
+    command: "codex acp"
+    adapter: "codex"
+    role: "executor"
+    system_prompt: |
+      你是前端开发专家。你只负责HTML/CSS/JavaScript代码编写。
+      不要做后端、数据库相关工作。完成后说明创建/修改了哪些文件。
+
+  backend-dev:
+    name: "后端开发"
+    command: "claude-code-acp"
+    adapter: "claude_code"
+    role: "executor"
+    system_prompt: |
+      你是后端开发专家。你只负责API接口开发和业务逻辑实现。
+      不要做前端UI工作。完成后说明创建/修改了哪些文件。
+
+  checker:
+    name: "代码审查"
+    command: "gemini --acp"
+    adapter: "gemini"
+    role: "checker"
+    system_prompt: |
+      你是代码审查专家。你只负责检查代码质量和完整性。
+      输出: "通过" 或 "不通过: 具体问题描述"。不要修改代码。
+
+  tester:
+    name: "测试"
+    command: "codex acp"
+    adapter: "codex"
+    role: "tester"
+    system_prompt: |
+      你是测试专家。你只负责编写测试用例、运行测试、报告结果。
+      不要修改业务代码。
