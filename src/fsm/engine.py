@@ -64,7 +64,7 @@ class OrchestrationFSM:
         if orch_config is None:
             raise ValueError("agents.yaml中缺少orchestrator配置")
 
-        session = await self.manager.spawn("orchestrator", orch_config)
+        session = await self.manager.spawn("orchestrator", orch_config, timeout=self.config.settings.task_timeout_seconds)
 
         context = fail_context if fail_context else f"需求: {requirement}"
 
@@ -101,14 +101,14 @@ class OrchestrationFSM:
         async def execute_one(task: Task):
             agent_config = self.config.agents.get(task.assigned_agent)
             if agent_config is None:
-                self.task_queue.mark_failed(task.id, f"未知Agent: {task.assigned_agent}")
+                await self.task_queue.mark_failed(task.id, f"未知Agent: {task.assigned_agent}")
                 return
 
-            self.task_queue.mark_running(task.id)
-            session = await self.manager.spawn(f"exec-{task.id}", agent_config)
+            await self.task_queue.mark_running(task.id)
+            timeout = self.config.settings.task_timeout_seconds
+            session = await self.manager.spawn(f"exec-{task.id}", agent_config, timeout=timeout)
             self.logger.log_router(f"任务 {task.id} -> {agent_config.name}")
 
-            timeout = self.config.settings.task_timeout_seconds
             try:
                 full_response = ""
                 updates = self.manager.send_task(session, task.description)
@@ -118,10 +118,10 @@ class OrchestrationFSM:
                         self.logger.log_exec(agent_config.name, content)
                         full_response += content
 
-                self.task_queue.mark_done(task.id, full_response.strip())
+                await self.task_queue.mark_done(task.id, full_response.strip())
                 self.logger.log_exec(agent_config.name, f"OK {task.id} 完成")
             except Exception as e:
-                self.task_queue.mark_failed(task.id, str(e))
+                await self.task_queue.mark_failed(task.id, str(e))
                 self.logger.log_error(f"{task.id} 失败: {e}")
             finally:
                 await self.manager.kill(session)

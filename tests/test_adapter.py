@@ -65,7 +65,7 @@ def test_session_creation():
     from src.config.loader import AgentConfig
     config = AgentConfig(
         name="测试Agent",
-        command="echo",
+        
         adapter="fake",
         role="executor",
         system_prompt="test",

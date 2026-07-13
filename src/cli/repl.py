@@ -4,19 +4,13 @@ import asyncio
 import os
 import sys
 import datetime
-from src.config.loader import load_config
+from src.config.loader import load_config, get_default_config_path
 from src.fsm.engine import OrchestrationFSM
 from src.agents.manager import AgentManager
 from src.logger.logger import Logger
 from src.cli.display import Display
 
-from src.agents.adapters.mock import MockAdapter
-from src.agents.adapters.direct_llm import DirectLLMAdapter
-from src.agents.adapters.claude_code import ClaudeCodeAdapter
-from src.agents.adapters.codex import CodexAdapter
-from src.agents.adapters.opencode import OpenCodeAdapter
-from src.agents.adapters.reasonix import ReasonixAdapter
-from src.agents.adapters.pi import PiAdapter
+from src.config.registry import register_all_adapters
 
 
 class OrchestratorREPL:
@@ -24,7 +18,7 @@ class OrchestratorREPL:
 
     def __init__(self, config_path: str | None = None):
         if config_path is None:
-            config_path = os.path.join(os.path.dirname(__file__), "..", "..", "agents.yaml")
+            config_path = get_default_config_path()
 
         self.config_path = config_path
         self.config = load_config(config_path)
@@ -32,38 +26,9 @@ class OrchestratorREPL:
         self.session_history: list[dict] = []
         self.turn = 0
 
-        self._setup_adapters()
-
-    def _setup_adapters(self):
-        # 已安装的 Agent → 真实适配器；未安装的 → MockAdapter 兜底
-        self._adapter_registry = {
-            "mock": MockAdapter,
-            "echo": MockAdapter,
-            "claude_code": ClaudeCodeAdapter,
-            "codex": CodexAdapter,
-            "direct_llm": DirectLLMAdapter,
-            "opencode": OpenCodeAdapter,
-            "reasonix": ReasonixAdapter,
-            "pi": PiAdapter,
-            # 未安装的 Agent 使用 MockAdapter
-            "gemini": MockAdapter,
-            "copilot": MockAdapter,
-            "goose": MockAdapter,
-            "cline": MockAdapter,
-            "auggie": MockAdapter,
-            "kiro": MockAdapter,
-            "qwen_code": MockAdapter,
-            "vibe": MockAdapter,
-            "droid": MockAdapter,
-            "qoder": MockAdapter,
-            "hermes": MockAdapter,
-            "openhands": MockAdapter,
-        }
-
     def _make_manager(self) -> AgentManager:
         manager = AgentManager()
-        for name, cls in self._adapter_registry.items():
-            manager.register_adapter(name, cls)
+        register_all_adapters(manager)
         return manager
 
     async def run_requirement(self, requirement: str) -> dict:

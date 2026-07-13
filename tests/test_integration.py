@@ -13,27 +13,27 @@ def make_e2e_config():
         settings=Settings(max_iterations=3),
         agents={
             "orchestrator": AgentConfig(
-                name="编排Agent", command="mock", adapter="mock",
+                name="编排Agent", adapter="mock",
                 role="orchestrator",
                 system_prompt="编排拆分任务输出JSON",
             ),
             "backend-dev": AgentConfig(
-                name="后端开发", command="mock", adapter="mock",
+                name="后端开发", adapter="mock",
                 role="executor",
                 system_prompt="执行后端任务",
             ),
             "frontend-dev": AgentConfig(
-                name="前端开发", command="mock", adapter="mock",
+                name="前端开发", adapter="mock",
                 role="executor",
                 system_prompt="执行前端任务",
             ),
             "checker": AgentConfig(
-                name="检查Agent", command="mock", adapter="mock",
+                name="检查Agent", adapter="mock",
                 role="checker",
                 system_prompt="检查审核代码",
             ),
             "tester": AgentConfig(
-                name="测试Agent", command="mock", adapter="mock",
+                name="测试Agent", adapter="mock",
                 role="tester",
                 system_prompt="测试代码",
             ),

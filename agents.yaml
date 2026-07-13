@@ -1,12 +1,10 @@
 settings:
   max_iterations: 5
   task_timeout_seconds: 300
-  global_timeout_seconds: 3600
 
 agents:
   orchestrator:
     name: "编排Agent"
-    command: "direct-llm"
     adapter: "direct_llm"
     role: "orchestrator"
     system_prompt: |
@@ -41,7 +39,6 @@ agents:
 
   frontend-dev:
     name: "前端开发"
-    command: "codex acp"
     adapter: "codex"
     role: "executor"
     system_prompt: |
@@ -63,7 +60,6 @@ agents:
 
   backend-dev:
     name: "后端开发"
-    command: "claude-agent-acp"
     adapter: "claude_code"
     role: "executor"
     system_prompt: |
@@ -85,7 +81,6 @@ agents:
 
   checker:
     name: "代码审查"
-    command: "opencode acp"
     adapter: "opencode"
     role: "checker"
     system_prompt: |
@@ -108,7 +103,6 @@ agents:
 
   tester:
     name: "测试"
-    command: "codex acp"
     adapter: "codex"
     role: "tester"
     system_prompt: |

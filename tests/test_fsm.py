@@ -47,22 +47,22 @@ def make_test_config():
         settings=Settings(max_iterations=3),
         agents={
             "orchestrator": AgentConfig(
-                name="编排", command="echo", adapter="echo",
+                name="编排", adapter="echo",
                 role="orchestrator",
                 system_prompt="拆分任务，输出JSON",
             ),
             "worker": AgentConfig(
-                name="执行", command="echo", adapter="echo",
+                name="执行", adapter="echo",
                 role="executor",
                 system_prompt="执行任务",
             ),
             "checker": AgentConfig(
-                name="检查", command="echo", adapter="echo",
+                name="检查", adapter="echo",
                 role="checker",
                 system_prompt="检查代码",
             ),
             "tester": AgentConfig(
-                name="测试", command="echo", adapter="echo",
+                name="测试", adapter="echo",
                 role="tester",
                 system_prompt="测试代码",
             ),

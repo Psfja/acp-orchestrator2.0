@@ -2,24 +2,12 @@ import argparse
 import asyncio
 import os
 import sys
-from src.config.loader import load_config
+from src.config.loader import load_config, get_default_config_path
 from src.fsm.engine import OrchestrationFSM
 from src.agents.manager import AgentManager
 from src.logger.logger import Logger
 
-from src.agents.adapters.mock import MockAdapter
-from src.agents.adapters.direct_llm import DirectLLMAdapter
-
-# 已安装的 ACP Agent 使用真实适配器
-from src.agents.adapters.claude_code import ClaudeCodeAdapter
-from src.agents.adapters.codex import CodexAdapter
-from src.agents.adapters.opencode import OpenCodeAdapter
-from src.agents.adapters.reasonix import ReasonixAdapter
-from src.agents.adapters.pi import PiAdapter
-
-
-def get_default_config_path() -> str:
-    return os.path.join(os.path.dirname(__file__), "..", "agents.yaml")
+from src.config.registry import register_all_adapters
 
 
 async def main_async(requirement: str, config_path: str) -> int:
@@ -32,31 +20,7 @@ async def main_async(requirement: str, config_path: str) -> int:
         return 1
 
     manager = AgentManager(logger=logger)
-
-    # DirectLLM 用于编排（快速 JSON，无 Agent 开销）
-    manager.register_adapter("direct_llm", DirectLLMAdapter)
-    # 已安装的 Agent → 真实适配器；未安装的 → MockAdapter 兜底
-    manager.register_adapter("mock", MockAdapter)
-    manager.register_adapter("echo", MockAdapter)
-    manager.register_adapter("claude_code", ClaudeCodeAdapter)
-    manager.register_adapter("codex", CodexAdapter)
-    manager.register_adapter("opencode", OpenCodeAdapter)
-    manager.register_adapter("reasonix", ReasonixAdapter)
-    manager.register_adapter("pi", PiAdapter)
-    # 未安装的 Agent 使用 MockAdapter
-    manager.register_adapter("gemini", MockAdapter)
-    manager.register_adapter("copilot", MockAdapter)
-    manager.register_adapter("goose", MockAdapter)
-    manager.register_adapter("cline", MockAdapter)
-    manager.register_adapter("auggie", MockAdapter)
-    manager.register_adapter("kiro", MockAdapter)
-    manager.register_adapter("qwen_code", MockAdapter)
-    manager.register_adapter("vibe", MockAdapter)
-    manager.register_adapter("droid", MockAdapter)
-    manager.register_adapter("qoder", MockAdapter)
-    manager.register_adapter("hermes", MockAdapter)
-    manager.register_adapter("openhands", MockAdapter)
-
+    register_all_adapters(manager)
     fsm = OrchestrationFSM(config=config, manager=manager, logger=logger)
     result = await fsm.run(requirement)
 

@@ -42,7 +42,7 @@ def manager():
 def agent_config():
     return AgentConfig(
         name="测试Agent",
-        command="fake",
+        
         adapter="fake",
         role="executor",
         system_prompt="你是测试Agent",

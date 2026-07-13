@@ -1,3 +1,4 @@
+import asyncio
 from src.tasks.models import Task, TaskStatus
 
 
@@ -5,6 +6,7 @@ class TaskQueue:
 
     def __init__(self):
         self._tasks: dict[str, Task] = {}
+        self._lock = asyncio.Lock()
 
     def enqueue(self, tasks: list[Task]) -> None:
         for task in tasks:
@@ -18,17 +20,20 @@ class TaskQueue:
                 ready.append(task)
         return ready
 
-    def mark_running(self, task_id: str) -> None:
-        if task_id in self._tasks:
-            self._tasks[task_id].mark_running()
+    async def mark_running(self, task_id: str) -> None:
+        async with self._lock:
+            if task_id in self._tasks:
+                self._tasks[task_id].mark_running()
 
-    def mark_done(self, task_id: str, result: str) -> None:
-        if task_id in self._tasks:
-            self._tasks[task_id].mark_done(result)
+    async def mark_done(self, task_id: str, result: str) -> None:
+        async with self._lock:
+            if task_id in self._tasks:
+                self._tasks[task_id].mark_done(result)
 
-    def mark_failed(self, task_id: str, error: str) -> None:
-        if task_id in self._tasks:
-            self._tasks[task_id].mark_failed(error)
+    async def mark_failed(self, task_id: str, error: str) -> None:
+        async with self._lock:
+            if task_id in self._tasks:
+                self._tasks[task_id].mark_failed(error)
 
     def all_done(self) -> bool:
         if not self._tasks:

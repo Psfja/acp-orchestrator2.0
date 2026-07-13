@@ -64,12 +64,16 @@ class RealACPAdapter(ACPAdapter):
         await self._send_json(writer, msg)
 
     async def read_updates(self, reader) -> AsyncIterator[dict]:
+        timeout = getattr(self, "_timeout", 300)
         while True:
             try:
-                line = await asyncio.wait_for(reader.readline(), timeout=300)
+                line = await asyncio.wait_for(reader.readline(), timeout=timeout)
                 if not line:
                     break
-                msg = json.loads(line.decode("utf-8").strip())
+                try:
+                    msg = json.loads(line.decode("utf-8").strip())
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
                 if "result" in msg and "id" in msg:
                     result = msg.get("result", {})
                     yield {"type": "result", "content": result.get("message", {}).get("text", str(result))}
@@ -77,7 +81,6 @@ class RealACPAdapter(ACPAdapter):
                 elif msg.get("method") == "session/update":
                     update = msg.get("params", {}).get("update", {})
                     update_type = update.get("type", "")
-                    # 跳过思考/推理内容，只记录实际消息和结果
                     if update_type in ("thinking", "reasoning"):
                         continue
                     yield update
@@ -94,7 +97,7 @@ class RealACPAdapter(ACPAdapter):
         }
         try:
             await self._send_json(writer, msg)
-        except Exception:
+        except (BrokenPipeError, ConnectionResetError, OSError):
             pass
 
     async def _send_json(self, writer, data: dict) -> None:

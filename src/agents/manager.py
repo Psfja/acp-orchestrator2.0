@@ -15,12 +15,13 @@ class AgentManager:
     def register_adapter(self, name: str, adapter_cls: type[ACPAdapter]) -> None:
         self._adapters[name] = adapter_cls
 
-    async def spawn(self, agent_key: str, config: AgentConfig) -> AgentSession:
+    async def spawn(self, agent_key: str, config: AgentConfig, timeout: int = 300) -> AgentSession:
         adapter_cls = self._adapters.get(config.adapter)
         if adapter_cls is None:
             raise ValueError(f"未注册的适配器: {config.adapter}")
 
         adapter = adapter_cls()
+        adapter._timeout = timeout
         writer, reader = await adapter.spawn()
 
         sid = await adapter.initialize(writer, reader, {
