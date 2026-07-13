@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 acp-orch = "src.main:main"
+acp = "src.cli.repl:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
