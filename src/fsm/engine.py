@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import time
@@ -6,6 +7,7 @@ from src.tasks.models import Task
 from src.tasks.queue import TaskQueue
 from src.agents.manager import AgentManager
 from src.config.loader import OrchestratorConfig
+from src.fsm.context import rebuild_context
 from src.logger.logger import Logger
 
 
@@ -57,6 +59,18 @@ class OrchestrationFSM:
         except (json.JSONDecodeError, TypeError):
             return []
 
+    async def _with_timeout(self, async_iter, timeout: int):
+        """给异步迭代器添加超时保护。"""
+        agen = async_iter.__aiter__()
+        while True:
+            try:
+                update = await asyncio.wait_for(agen.__anext__(), timeout=timeout)
+                yield update
+            except StopAsyncIteration:
+                return
+            except asyncio.TimeoutError:
+                raise
+
     async def _orchestrate(self, requirement: str, fail_context: str = "") -> list[Task]:
         orch_config = self.config.agents.get("orchestrator")
         if orch_config is None:
@@ -106,9 +120,11 @@ class OrchestrationFSM:
             session = await self.manager.spawn(f"exec-{task.id}", agent_config)
             self.logger.log_router(f"任务 {task.id} -> {agent_config.name}")
 
+            timeout = self.config.settings.task_timeout_seconds
             try:
                 full_response = ""
-                async for update in self.manager.send_task(session, task.description):
+                updates = self.manager.send_task(session, task.description)
+                async for update in self._with_timeout(updates, timeout):
                     content = update.get("content", "")
                     if content:
                         self.logger.log_exec(agent_config.name, content)
@@ -116,6 +132,9 @@ class OrchestrationFSM:
 
                 self.task_queue.mark_done(task.id, full_response.strip())
                 self.logger.log_exec(agent_config.name, f"OK {task.id} 完成")
+            except asyncio.TimeoutError:
+                self.task_queue.mark_failed(task.id, f"超时({timeout}秒)")
+                self.logger.log_error(f"{task.id} 超时({timeout}秒)")
             except Exception as e:
                 self.task_queue.mark_failed(task.id, str(e))
                 self.logger.log_error(f"{task.id} 失败: {e}")
@@ -127,8 +146,7 @@ class OrchestrationFSM:
 
         ready = self.task_queue.get_ready()
         while ready:
-            for task in ready:
-                await execute_one(task)
+            await asyncio.gather(*[execute_one(t) for t in ready])
             ready = self.task_queue.get_ready()
 
     async def _review(self) -> bool:
@@ -191,8 +209,9 @@ class OrchestrationFSM:
 
     async def run(self, requirement: str) -> dict:
         start_time = time.time()
+        global_timeout = self.config.settings.global_timeout_seconds
 
-        try:
+        async def _run_inner():
             self._transition(OrchestrationState.ORCHESTRATING)
             self.iteration += 1
 
@@ -201,35 +220,69 @@ class OrchestrationFSM:
                 self._transition(OrchestrationState.FAILED)
                 return {"status": "failed", "reason": "编排Agent输出解析失败"}
 
-            await self._dispatch(tasks)
-            await self._execute()
+            while self.iteration <= self.config.settings.max_iterations:
+                await self._dispatch(tasks)
+                await self._execute()
 
-            if self.task_queue.has_failed():
-                self._transition(OrchestrationState.FAILED)
-                return {"status": "failed", "reason": "任务执行失败"}
+                if self.task_queue.has_failed():
+                    done = self.task_queue.get_done_tasks()
+                    failed = self.task_queue.get_failed_tasks()
+                    fail_info = "以下任务执行失败:\n"
+                    for t in failed:
+                        fail_info += f"- FAIL {t.id}: {t.error}\n"
 
-            review_ok = await self._review()
-            if not review_ok:
-                self._transition(OrchestrationState.FAILED)
-                return {"status": "failed", "reason": "检查不通过"}
+                    context = rebuild_context(requirement, done, fail_info, self.iteration)
+                    self.logger.log_error(f"返工: 第{self.iteration}轮有失败任务")
+                    tasks = await self._orchestrate(requirement, fail_context=context)
+                    if not tasks:
+                        self._transition(OrchestrationState.FAILED)
+                        return {"status": "failed", "reason": "编排Agent返工解析失败"}
+                    continue
 
-            test_ok = await self._test()
-            if not test_ok:
-                self._transition(OrchestrationState.FAILED)
-                return {"status": "failed", "reason": "测试不通过"}
+                review_ok = await self._review()
+                if not review_ok:
+                    done = self.task_queue.get_done_tasks()
+                    fail_info = "检查不通过: 代码存在问题需要修复"
+                    context = rebuild_context(requirement, done, fail_info, self.iteration)
+                    tasks = await self._orchestrate(requirement, fail_context=context)
+                    if not tasks:
+                        self._transition(OrchestrationState.FAILED)
+                        return {"status": "failed", "reason": "编排Agent返工解析失败"}
+                    continue
 
-            self._transition(OrchestrationState.COMPLETED)
-            elapsed = f"{time.time() - start_time:.2f}秒"
-            total_tasks = len(self.task_queue._tasks)
-            self.logger.log_completed(self.iteration, total_tasks, elapsed)
+                test_ok = await self._test()
+                if not test_ok:
+                    done = self.task_queue.get_done_tasks()
+                    fail_info = "测试不通过: 部分测试用例失败"
+                    context = rebuild_context(requirement, done, fail_info, self.iteration)
+                    tasks = await self._orchestrate(requirement, fail_context=context)
+                    if not tasks:
+                        self._transition(OrchestrationState.FAILED)
+                        return {"status": "failed", "reason": "编排Agent返工解析失败"}
+                    continue
 
-            return {
-                "status": "completed",
-                "iterations": self.iteration,
-                "total_tasks": total_tasks,
-                "elapsed": elapsed,
-            }
+                # 全部通过
+                self._transition(OrchestrationState.COMPLETED)
+                elapsed = f"{time.time() - start_time:.2f}秒"
+                total_tasks_done = len(self.task_queue.get_done_tasks())
+                self.logger.log_completed(self.iteration, total_tasks_done, elapsed)
+                return {
+                    "status": "completed",
+                    "iterations": self.iteration,
+                    "total_tasks": total_tasks_done,
+                    "elapsed": elapsed,
+                }
 
+            # 超出最大迭代次数
+            self._transition(OrchestrationState.FAILED)
+            return {"status": "failed", "reason": f"超过最大迭代次数({self.config.settings.max_iterations})"}
+
+        try:
+            return await asyncio.wait_for(_run_inner(), timeout=global_timeout)
+        except asyncio.TimeoutError:
+            self._transition(OrchestrationState.FAILED)
+            self.logger.log_failed(f"全局超时({global_timeout}秒)")
+            return {"status": "failed", "reason": f"全局超时({global_timeout}秒)"}
         except Exception as e:
             self._transition(OrchestrationState.FAILED)
             self.logger.log_failed(str(e))
