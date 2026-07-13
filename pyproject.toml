@@ -23,8 +23,9 @@ dev = [
 acp-orch = "src.main:main"
 acp = "src.cli.repl:main"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src", "src.*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
