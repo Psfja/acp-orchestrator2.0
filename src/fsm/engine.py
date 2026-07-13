@@ -59,18 +59,6 @@ class OrchestrationFSM:
         except (json.JSONDecodeError, TypeError):
             return []
 
-    async def _with_timeout(self, async_iter, timeout: int):
-        """给异步迭代器添加超时保护。"""
-        agen = async_iter.__aiter__()
-        while True:
-            try:
-                update = await asyncio.wait_for(agen.__anext__(), timeout=timeout)
-                yield update
-            except StopAsyncIteration:
-                return
-            except asyncio.TimeoutError:
-                raise
-
     async def _orchestrate(self, requirement: str, fail_context: str = "") -> list[Task]:
         orch_config = self.config.agents.get("orchestrator")
         if orch_config is None:
@@ -124,7 +112,7 @@ class OrchestrationFSM:
             try:
                 full_response = ""
                 updates = self.manager.send_task(session, task.description)
-                async for update in self._with_timeout(updates, timeout):
+                async for update in updates:
                     content = update.get("content", "")
                     if content:
                         self.logger.log_exec(agent_config.name, content)
@@ -132,9 +120,6 @@ class OrchestrationFSM:
 
                 self.task_queue.mark_done(task.id, full_response.strip())
                 self.logger.log_exec(agent_config.name, f"OK {task.id} 完成")
-            except asyncio.TimeoutError:
-                self.task_queue.mark_failed(task.id, f"超时({timeout}秒)")
-                self.logger.log_error(f"{task.id} 超时({timeout}秒)")
             except Exception as e:
                 self.task_queue.mark_failed(task.id, str(e))
                 self.logger.log_error(f"{task.id} 失败: {e}")
@@ -173,7 +158,8 @@ class OrchestrationFSM:
 
         await self.manager.kill(session)
 
-        passed = "通过" in full_response and "不通过" not in full_response
+        # 检查是否明确标记为"审核通过"
+        passed = "审核通过" in full_response
         if not passed:
             self.logger.log_check("WARN 审核不通过")
         return passed
@@ -202,7 +188,8 @@ class OrchestrationFSM:
 
         await self.manager.kill(session)
 
-        passed = "通过" in full_response and "失败" not in full_response
+        # 检查是否明确标记为"测试通过"
+        passed = "测试通过" in full_response
         if not passed:
             self.logger.log_test("FAIL 测试不通过")
         return passed

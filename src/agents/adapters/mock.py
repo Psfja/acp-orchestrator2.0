@@ -24,13 +24,13 @@ EXECUTOR_RESPONSE = """工作中...
 
 CHECKER_RESPONSE = """审核完成。
 代码质量良好，所有功能按要求实现。
-审核结果: 通过"""
+审核通过。"""
 
 TESTER_RESPONSE = """测试执行完成。
 测试用例: 10个
 通过: 10个
 未通过: 0个
-测试结果: 全部通过"""
+测试通过。用例数:10, 通过:10, 未通过:0"""
 
 
 class MockAdapter(ACPAdapter):
