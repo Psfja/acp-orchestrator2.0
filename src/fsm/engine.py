@@ -1,7 +1,9 @@
 import asyncio
 import json
+import os
 import re
 import time
+from src.agents.adapters.real import _extract_text
 from src.fsm.states import OrchestrationState, VALID_TRANSITIONS
 from src.tasks.models import Task
 from src.tasks.queue import TaskQueue
@@ -90,6 +92,12 @@ class OrchestrationFSM:
 
         return tasks
 
+    def _save_output(self, task_id: str, content: str) -> None:
+        os.makedirs("output", exist_ok=True)
+        filename = f"output/{task_id}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+
     async def _dispatch(self, tasks: list[Task]) -> None:
         self._transition(OrchestrationState.DISPATCHING)
         self.task_queue.clear()
@@ -115,10 +123,12 @@ class OrchestrationFSM:
                 async for update in updates:
                     content = update.get("content", "")
                     if content:
-                        self.logger.log_exec(agent_config.name, content)
-                        full_response += content
+                        text = _extract_text(content)
+                        self.logger.log_exec(agent_config.name, text)
+                        full_response += text
 
                 await self.task_queue.mark_done(task.id, full_response.strip())
+                self._save_output(task.id, full_response.strip())
                 self.logger.log_exec(agent_config.name, f"OK {task.id} 完成")
             except Exception as e:
                 await self.task_queue.mark_failed(task.id, str(e))
